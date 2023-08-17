@@ -31,7 +31,10 @@ try:
     from . import utils
     from .device_data import DeviceDataManager
     import re
+    import queue
+    import threading
     import time
+    from sonic_platform import modules_mgmt
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
 
@@ -122,6 +125,17 @@ class Chassis(ChassisBase):
         # Build the RJ45 port list from platform.json and hwsku.json
         self._RJ45_port_inited = False
         self._RJ45_port_list = None
+
+        self.threads = []
+        self.modules_mgmt_thread = threading.Thread()
+        self.modules_changes_queue = queue.Queue()
+        self.modules_queue_lock = threading.Lock()
+        #self.modules_changes_dict = {}
+
+        self.is_independent_modules_system = False
+        SAI_INDEPENDENT_MODULE_MODE = True
+        if SAI_INDEPENDENT_MODULE_MODE:
+            self.is_independent_modules_system = True
 
         logger.log_info("Chassis loaded successfully")
 
@@ -278,6 +292,12 @@ class Chassis(ChassisBase):
                 self.sfp_initialized_count += 1
 
     def initialize_sfp(self):
+        if not self.modules_mgmt_thread.is_alive():
+            # open new SFP change events thread
+            self.modules_mgmt_thread = modules_mgmt.ModulesMgmtTask(q=self.modules_changes_queue
+                                                                          , l=self.modules_queue_lock)
+            self.modules_mgmt_thread.start()
+            self.threads.append(self.modules_mgmt_thread)
         if not self._sfp_list:
             sfp_module = self._import_sfp_module()
             sfp_count = self.get_num_sfps()
@@ -332,8 +352,11 @@ class Chassis(ChassisBase):
             An object dervied from SfpBase representing the specified sfp
         """
         index = index - 1
-        self.initialize_single_sfp(index)
-        return super(Chassis, self).get_sfp(index)
+        if utils.is_host():
+            self.initialize_single_sfp(index)
+            return super(Chassis, self).get_sfp(index)
+        else:
+            return None
 
     def get_port_or_cage_type(self, index):
         """
@@ -384,36 +407,51 @@ class Chassis(ChassisBase):
         """
         self.initialize_sfp()
         # Initialize SFP event first
-        if not self.sfp_event:
-            from .sfp_event import sfp_event
-            self.sfp_event = sfp_event(self.RJ45_port_list)
-            self.sfp_event.initialize()
-
-        wait_for_ever = (timeout == 0)
-        # select timeout should be no more than 1000ms to ensure fast shutdown flow
-        select_timeout = 1000.0 if timeout >= 1000 else float(timeout)
+        # if not self.sfp_event:
+        #     from .sfp_event import sfp_event
+        #     self.sfp_event = sfp_event(self.RJ45_port_list)
+        #     self.sfp_event.initialize()
+        #
+        # wait_for_ever = (timeout == 0)
+        # # select timeout should be no more than 1000ms to ensure fast shutdown flow
+        # select_timeout = 1000.0 if timeout >= 1000 else float(timeout)
         port_dict = {}
         error_dict = {}
-        begin = time.time()
+        # begin = time.time()
         while True:
-            status = self.sfp_event.check_sfp_status(port_dict, error_dict, select_timeout)
-            if bool(port_dict):
-                break
+            print('get_change_event() acquiring queue lock')
+            self.modules_queue_lock.acquire()
+            if self.modules_changes_queue.qsize() > 0:
+                #with self.modules_changes_queue.mutex:
+                if True:
+                    try:
+                        print('get_change_event() trying to get changes from queue')
+                        port_dict = self.modules_changes_queue.get(timeout=1)
+                        print ('get_change_event() port_dict: {}'.format(port_dict))
+                    except queue.Empty:
+                        logger.log_info("failed to get item from modules changes queue")
+                        print("failed to get item from modules changes queue")
+            print('get_change_event() releasing queue lock')
+            self.modules_queue_lock.release()
+            time.sleep(1)
+            # status = self.sfp_event.check_sfp_status(port_dict, error_dict, select_timeout)
+            # if bool(port_dict):
+            #     break
+            #
+            # if not wait_for_ever:
+            #     elapse = time.time() - begin
+            #     if elapse * 1000 > timeout:
+            #         break
 
-            if not wait_for_ever:
-                elapse = time.time() - begin
-                if elapse * 1000 > timeout:
-                    break
-
-        if status:
+        # if status:
             if port_dict:
                 self.reinit_sfps(port_dict)
-            result_dict = {'sfp': port_dict}
-            if error_dict:
+                result_dict = {'sfp': port_dict}
+        #     if error_dict:
                 result_dict['sfp_error'] = error_dict
-            return True, result_dict
-        else:
-            return True, {'sfp': {}}
+                return True, result_dict
+        # else:
+        #     return True, {'sfp': {}}
 
     def reinit_sfps(self, port_dict):
         """
