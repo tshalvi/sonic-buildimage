@@ -292,12 +292,6 @@ class Chassis(ChassisBase):
                 self.sfp_initialized_count += 1
 
     def initialize_sfp(self):
-        if not self.modules_mgmt_thread.is_alive():
-            # open new SFP change events thread
-            self.modules_mgmt_thread = modules_mgmt.ModulesMgmtTask(q=self.modules_changes_queue
-                                                                          , l=self.modules_queue_lock)
-            self.modules_mgmt_thread.start()
-            self.threads.append(self.modules_mgmt_thread)
         if not self._sfp_list:
             sfp_module = self._import_sfp_module()
             sfp_count = self.get_num_sfps()
@@ -352,11 +346,8 @@ class Chassis(ChassisBase):
             An object dervied from SfpBase representing the specified sfp
         """
         index = index - 1
-        if utils.is_host():
-            self.initialize_single_sfp(index)
-            return super(Chassis, self).get_sfp(index)
-        else:
-            return None
+        self.initialize_single_sfp(index)
+        return super(Chassis, self).get_sfp(index)
 
     def get_port_or_cage_type(self, index):
         """
@@ -405,6 +396,12 @@ class Chassis(ChassisBase):
                       indicates that fan 0 has been removed, fan 2
                       has been inserted and sfp 11 has been removed.
         """
+        if not self.modules_mgmt_thread.is_alive():
+            # open new SFP change events thread
+            self.modules_mgmt_thread = modules_mgmt.ModulesMgmtTask(q=self.modules_changes_queue
+                                                                          , l=self.modules_queue_lock)
+            self.modules_mgmt_thread.start()
+            self.threads.append(self.modules_mgmt_thread)
         self.initialize_sfp()
         # Initialize SFP event first
         # if not self.sfp_event:

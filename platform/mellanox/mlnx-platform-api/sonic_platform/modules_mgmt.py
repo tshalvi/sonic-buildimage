@@ -6,11 +6,12 @@ import select
 
 try:
     from sonic_py_common.logger import Logger
-    from sonic_py_common import device_info
+    from sonic_py_common import device_info, multi_asic
     from .device_data import DeviceDataManager
     from sonic_platform_base.sfp_base import SfpBase
     from sonic_platform_base.sonic_xcvr.fields import consts
     from . import sfp as sfp_module
+    from swsscommon.swsscommon import SonicV2Connector
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
 
@@ -88,7 +89,7 @@ class ModulesMgmtTask(threading.Thread):
         self.fds_mapping_to_obj = {}
 
     # SFPs state machine
-    def get_sm_func(self, sm):
+    def get_sm_func(self, sm, port):
         SFP_SM_ENUM = {STATE_HW_NOT_PRESENT: self.check_if_hw_present
             , STATE_HW_PRESENT: self.checkIfModuleAvailable
             , STATE_MODULE_AVAILABLE: self.checkIfPowerOn
@@ -100,11 +101,14 @@ class ModulesMgmtTask(threading.Thread):
             , STATE_POWER_LIMIT_ERROR: STATE_POWER_LIMIT_ERROR
             , STATE_SYSFS_ERROR: STATE_SYSFS_ERROR
         }
-        print ("getting func for state {}".format(sm))
-        func = SFP_SM_ENUM[sm]
-        print ("got func {} for state {}".format(func, sm))
-        return SFP_SM_ENUM[sm]
-
+        print_and_log("getting func for state {} for port {}".format(sm, port))
+        try:
+            func = SFP_SM_ENUM[sm]
+            print_and_log("got func {} for state {} for port {}".format(func, sm, port))
+            return func
+        except KeyError:
+            print_and_log("exception {} for port {}".format(e, port))
+        return None
 
     def run(self):
         # check first if the system supports independent mode and set boolean accordingly
@@ -161,7 +165,7 @@ class ModulesMgmtTask(threading.Thread):
             self.sfp_port_dict_initial[port] = temp_module_sm
             self.sfp_port_dict[port] = temp_module_sm
 
-        print ("sfp_port_dict: {}".format(self.sfp_port_dict))
+        print_and_log("sfp_port_dict: {}".format(self.sfp_port_dict))
         # loop on listening to changes, gather and put them into shared queue, then continue looping
         i = 0
         # need at least 1 module in final state until it makes sense to poll for changes
@@ -170,7 +174,7 @@ class ModulesMgmtTask(threading.Thread):
             print_and_log("running iteration {}".format(i))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
-                func = self.get_sm_func(curr_state)
+                func = self.get_sm_func(curr_state, port)
                 print_and_log("got returned func {} for state {}".format(func, curr_state))
                 next_state = func(port_num, module_sm_obj)
                 if self.timer.is_alive():
@@ -194,17 +198,36 @@ class ModulesMgmtTask(threading.Thread):
                         self.timer.start()
                     self.timer_queue.put(module_sm_obj)
                     if self.timer.is_alive():
-                        print_and_log ("timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
+                        print_and_log("timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].acquire()
                     module_sm_obj.set_next_state(next_state)
                     if self.timer.is_alive():
-                        print_and_log ("timer thread is_alive {}, releasing module obj".format(self.timer.is_alive()))
+                        print_and_log("timer thread is_alive {}, releasing module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].release()
+            state_db = None
             for port, module_obj in self.sfp_port_dict_initial.items():
                 final_state = module_obj.get_final_state()
                 if port in self.sfp_port_dict.keys() and final_state:
                     del self.sfp_port_dict[port]
                     self.sfp_changes_dict[str(module_obj.port_num)] = '0' if final_state in [STATE_HW_NOT_PRESENT, STATE_ERROR_HANDLER] else '1'
+                    if final_state in [STATE_SW_CONTROL, STATE_FW_CONTROL]:
+                        namespaces = multi_asic.get_front_end_namespaces()
+                        for namespace in namespaces:
+                            print_and_log("getting state_db for port {} namespace {}".format(port, namespace))
+                            state_db = SonicV2Connector(use_unix_socket_path=False, namespace=namespace)
+                            print_and_log("got state_db for port {} namespace {}".format(port, namespace))
+                            if state_db is not None:
+                                print_and_log("connecting to state_db for port {} namespace {}".format(port, namespace))
+                                state_db.connect(state_db.STATE_DB)
+                                if final_state in [STATE_FW_CONTROL]:
+                                    control_type = 'FW_CONTROL'
+                                elif final_state in [STATE_SW_CONTROL]:
+                                    control_type = 'SW_CONTROL'
+                                table_name = 'TRANSCEIVER_MODULES_MGMT|{}'.format(port)
+                                print_and_log("setting state_db table {} for port {} namespace {} control_type {}".format(table_name, port, namespace, control_type))
+                                state_db.set(state_db.STATE_DB, table_name,
+                                             "control type", control_type)
+
             if is_final_state_module:
                 # poll for changes with 1 second timeout
                 fds_events = self.poll_obj.poll(1000)
