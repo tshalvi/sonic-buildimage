@@ -11,7 +11,6 @@ try:
     from sonic_platform_base.sfp_base import SfpBase
     from sonic_platform_base.sonic_xcvr.fields import consts
     from . import sfp as sfp_module
-    from . import utils
     from swsscommon.swsscommon import SonicV2Connector
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
@@ -170,7 +169,6 @@ class ModulesMgmtTask(threading.Thread):
             print_and_log("running iteration {}".format(i))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
-                print_and_log(f'STATE_LOG {port_num}: curr_state is {curr_state}')
                 func = self.get_sm_func(curr_state, port)
                 print_and_log("got returned func {} for state {}".format(func, curr_state))
                 next_state = func(port_num, module_sm_obj)
