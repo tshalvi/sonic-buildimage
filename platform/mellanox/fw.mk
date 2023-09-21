@@ -1,4 +1,4 @@
-#
+ #
 # Copyright (c) 2016-2023 NVIDIA CORPORATION & AFFILIATES.
 # Apache-2.0
 #
@@ -19,7 +19,7 @@
 MLNX_FW_BASE_PATH = $(MLNX_SDK_BASE_PATH)
 
 # Place an URL here to FW if you want to download FW instead
-MLNX_FW_BASE_URL =
+MLNX_FW_BASE_URL = http://nbu-nfs.mellanox.com//auto/sw_system_release/sonic/noa-fw
 
 SIMX_VERSION = 23.10-1081
 
@@ -47,7 +47,7 @@ MLNX_SPC3_FW_FILE = fw-SPC3-rel-$(subst .,_,$(MLNX_SPC3_FW_VERSION))-EVB.mfa
 $(MLNX_SPC3_FW_FILE)_PATH = $(MLNX_FW_BASE_PATH)
 $(MLNX_SPC3_FW_FILE)_URL = $(MLNX_FW_BASE_URL)/$(MLNX_SPC3_FW_FILE)
 
-MLNX_SPC4_FW_VERSION = 34.2012.1020
+MLNX_SPC4_FW_VERSION = 34.2012.1942
 MLNX_SPC4_FW_FILE = fw-SPC4-rel-$(subst .,_,$(MLNX_SPC4_FW_VERSION))-EVB.mfa
 $(MLNX_SPC4_FW_FILE)_PATH = $(MLNX_FW_BASE_PATH)
 $(MLNX_SPC4_FW_FILE)_URL = $(MLNX_FW_BASE_URL)/$(MLNX_SPC4_FW_FILE)
