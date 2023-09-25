@@ -11,6 +11,7 @@ try:
     from sonic_platform_base.sfp_base import SfpBase
     from sonic_platform_base.sonic_xcvr.fields import consts
     from . import sfp as sfp_module
+    from . import utils
     from swsscommon.swsscommon import SonicV2Connector
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
@@ -33,8 +34,7 @@ INDEP_PROFILE_FILE = "/{}/independent_mode_support.profile"
 SAI_INDEP_MODULE_MODE = "SAI_INDEPENDENT_MODULE_MODE"
 SAI_INDEP_MODULE_MODE_DELIMITER = "="
 SAI_INDEP_MODULE_MODE_TRUE_STR = "1"
-SYSFS_LEGACY_FD_PREFIX = "/sys/module/sx_netdev/{}/module/"
-SYSFS_LEGACY_PRESENCE_FD = "/sys/module/sx_netdev/{}/module/present"
+SYSFS_LEGACY_PRESENCE_FD = "/sys/module/sx_core/asic0/module{}/present"
 ASIC_NUM = 0
 PORT_BREAKOUT = 8
 SYSFS_INDEPENDENT_FD_PREFIX_WO_MODULE = "/sys/module/sx_core/asic{}".format(ASIC_NUM)
@@ -48,10 +48,6 @@ SYSFS_INDEPENDENT_FD_FW_CONTROL = '/'.join([SYSFS_INDEPENDENT_FD_PREFIX, "contro
 # echo <val>  /sys/module/sx_core/$asic/$module/frequency   //  val: 0 - up to 400KHz, 1 - up to 1MHz
 SYSFS_INDEPENDENT_FD_FREQ = '/'.join([SYSFS_INDEPENDENT_FD_PREFIX, "frequency"])
 IS_INDEPENDENT_MODULE = 'is_independent_module'
-SYSFS_LEGACY_FD_POWER_MODE = '/'.join([SYSFS_LEGACY_FD_PREFIX, "power_mode"])
-SYSFS_LEGACY_FD_POWER_ON = '/'.join([SYSFS_LEGACY_FD_PREFIX, "power_on"])
-SYSFS_LEGACY_FD_HW_RESET = '/'.join([SYSFS_LEGACY_FD_PREFIX, "reset"])
-SYSFS_LEGACY_FD_POWER_LIMIT = '/'.join([SYSFS_LEGACY_FD_PREFIX, "power_mode_policy"])
 
 class ModulesMgmtTask(threading.Thread):
     RETRY_EEPROM_READING_INTERVAL = 60
@@ -158,7 +154,7 @@ class ModulesMgmtTask(threading.Thread):
             # register the module's sysfs fd to poller with ERR and PRI attrs
 
             self.poll_obj.register(module_fd, select.POLLERR | select.POLLPRI)
-            self.fds_mapping_to_obj[module_fd] = temp_module_sm
+            self.fds_mapping_to_obj[module_fd.fileno()] = temp_module_sm
             temp_module_sm.set_poll_obj(self.poll_obj)
             # start SM for this independent module
             print_and_log("adding temp_module_sm {} to sfp_port_dict".format(temp_module_sm))
@@ -174,9 +170,11 @@ class ModulesMgmtTask(threading.Thread):
             print_and_log("running iteration {}".format(i))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
+                print_and_log(f'STATE_LOG {port_num}: curr_state is {curr_state}')
                 func = self.get_sm_func(curr_state, port)
                 print_and_log("got returned func {} for state {}".format(func, curr_state))
                 next_state = func(port_num, module_sm_obj)
+                print_and_log(f'STATE_LOG {port_num}: next_state is {next_state}')
                 if self.timer.is_alive():
                     print_and_log("timer threads is alive, acquiring lock")
                     self.modules_lock_list[port_num].acquire()
@@ -184,6 +182,7 @@ class ModulesMgmtTask(threading.Thread):
                     module_sm_obj.set_next_state(next_state)
                     module_sm_obj.advance_state()
                 if module_sm_obj.get_final_state():
+                    print_and_log(f'STATE_LOG {port_num}: enter final state {module_sm_obj.get_final_state()}')
                     is_final_state_module = True
                 if self.timer.is_alive():
                     self.modules_lock_list[port_num].release()
@@ -254,6 +253,7 @@ class ModulesMgmtTask(threading.Thread):
             #time.sleep(3)
             i += 1
             if 10 == i:
+                print_and_log('stopping the loop for no reason?')
                 self.task_stopping_event.set()
             print_and_log("sfp_port_dict: {}".format(self.sfp_port_dict))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
@@ -264,22 +264,16 @@ class ModulesMgmtTask(threading.Thread):
 
 
     def check_if_hw_present(self, port, module_sm_obj):
-        #module_fd_indep_path = SYSFS_INDEPENDENT_FD_PRESENCE.format(port)
-        #if os.path.isfile(module_fd_indep_path):
-        module_fd = module_sm_obj.module_fd
-        if module_fd:
+        module_fd_indep_path = SYSFS_INDEPENDENT_FD_PRESENCE.format(port)
+        if os.path.isfile(module_fd_indep_path):
             try:
-                val = module_fd.read()
-                #val_int = int(val)
-                val_int = val
-                print_and_log("read val {} with type {} from module_fd {} int(val): {}".format(val, type(val), module_fd, val_int))
-                val_int = int(val)
+                val_int = utils.read_int_from_file(module_fd_indep_path)
                 if 0 == val_int:
-                    print_and_log("returning {} for val {}".format(STATE_HW_NOT_PRESENT, val))
+                    print_and_log("returning {} for val {}".format(STATE_HW_NOT_PRESENT, val_int))
                     module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
                     return STATE_HW_NOT_PRESENT
                 elif 1 == val_int:
-                    print_and_log("returning {} for val {}".format(STATE_HW_PRESENT, val))
+                    print_and_log("returning {} for val {}".format(STATE_HW_PRESENT, val_int))
                     return STATE_HW_PRESENT
             except Exception as e:
                 print_and_log("exception {} for port {}".format(e, port))
@@ -289,48 +283,54 @@ class ModulesMgmtTask(threading.Thread):
     def checkIfModuleAvailable(self, port, module_sm_obj):
         print_and_log("enter check_if_module_available port {} module_sm_obj {}".format(port, module_sm_obj))
         module_fd_indep_path = SYSFS_INDEPENDENT_FD_POWER_GOOD.format(port)
-        #module_fd_indep_path = SYSFS_LEGACY_FD_POWER_MODE.format("Ethernet{}".format(port*PORT_BREAKOUT))
         if os.path.isfile(module_fd_indep_path):
             try:
-                #with open(module_fd_indep_path, "r") as module_fd:
-                module_fd = open(module_fd_indep_path, "r")
-                if module_fd:
-                    val = module_fd.read()
-                    val_int = int(val)
-                    if 0 == val_int:
-                        return STATE_HW_NOT_PRESENT
-                    elif 1 == val_int:
-                    #elif 2 == val_int:
-                        self.poll_obj.register(module_fd, select.POLLERR | select.POLLPRI)
-                        self.fds_mapping_to_obj[module_fd] = module_sm_obj
-                        return STATE_MODULE_AVAILABLE
+                val_int = utils.read_int_from_file(module_fd_indep_path)
+                if 0 == val_int:
+                    print_and_log(f'port {port} power is not good')
+                    return STATE_HW_NOT_PRESENT
+                elif 1 == val_int:
+                    print_and_log(f'port {port} power is good')
+                #elif 2 == val_int:
+                    self.poll_obj.register(module_sm_obj.module_fd, select.POLLERR | select.POLLPRI)
+                    self.fds_mapping_to_obj[module_sm_obj.module_fd.fileno()] = module_sm_obj
+                    return STATE_MODULE_AVAILABLE
             except Exception as e:
                 print_and_log("exception {} for port {}".format(e, port))
                 return STATE_HW_NOT_PRESENT
+        print_and_log(f'port {port} has no power good file {module_fd_indep_path}')
         return STATE_HW_NOT_PRESENT
 
     def checkIfPowerOn(self, port, module_sm_obj):
-        #module_fd_indep_path = SYSFS_INDEPENDENT_FD_POWER_ON.format(port)
-        module_fd_indep_path = SYSFS_LEGACY_FD_POWER_ON.format("Ethernet{}".format(port * PORT_BREAKOUT))
+        print_and_log(f'enter checkIfPowerOn for port {port}')
+        module_fd_indep_path = SYSFS_INDEPENDENT_FD_POWER_ON.format(port)
         if os.path.isfile(module_fd_indep_path):
             try:
                 with open(module_fd_indep_path, "r") as module_fd:
                     val = module_fd.read()
                     val_int = int(val)
                     if 0 == val_int:
+                        print_and_log(f'port {port} is not powered')
                         return STATE_NOT_POWERED
                     elif 1 == val_int:
+                        if not module_sm_obj.wait_for_power_on and utils.read_int_from_file(SYSFS_INDEPENDENT_FD_HW_RESET.format(port)) == 1:
+                            print_and_log(f'port {port} is powered, but need reset')
+                            utils.write_file(SYSFS_INDEPENDENT_FD_HW_RESET.format(port), 0)
+                            module_sm_obj.reset_start_time = time.time()
+                            module_sm_obj.wait_for_power_on = True
+                            self.waiting_modules_list.append(module_sm_obj)
+                            return STATE_NOT_POWERED
+                        print_and_log(f'port {port} is powered, does not need reset')
                         return STATE_POWERED
             except Exception as e:
+                print_and_log(f'got exception {e} in checkIfPowerOn')
                 return STATE_HW_NOT_PRESENT
 
     def powerOnModule(self, port, module_sm_obj):
         #if module_sm_obj not in self.waiting_modules_list:
         if not module_sm_obj.wait_for_power_on:
             module_fd_indep_path_po = SYSFS_INDEPENDENT_FD_POWER_ON.format(port)
-            #module_fd_indep_path_po = SYSFS_LEGACY_FD_POWER_ON.format("Ethernet{}".format(port * PORT_BREAKOUT))
             module_fd_indep_path_r = SYSFS_INDEPENDENT_FD_HW_RESET.format(port)
-            #module_fd_indep_path_r = SYSFS_LEGACY_FD_HW_RESET.format("Ethernet{}".format(port * PORT_BREAKOUT))
             try:
                 if os.path.isfile(module_fd_indep_path_po):
                     print_and_log("powerOnModule powering on via {} for port {}".format(module_fd_indep_path_po, port))
@@ -404,7 +404,6 @@ class ModulesMgmtTask(threading.Thread):
         powercap = int.from_bytes(powercap_ba, "big")
         print_and_log("checkPowerCap got powercap {} for port {} module_sm_obj {}".format(powercap, port, module_sm_obj))
         indep_fd_power_limit = self.get_sysfs_ethernet_port_fd(SYSFS_INDEPENDENT_FD_POWER_LIMIT, port)
-        #indep_fd_power_limit = self.get_sysfs_ethernet_port_legacy_fd(SYSFS_LEGACY_FD_POWER_LIMIT, port)
         with open(indep_fd_power_limit, "r") as power_limit_fd:
             cage_power_limit = power_limit_fd.read()
         print_and_log("checkPowerCap got cage_power_limit {} for port {} module_sm_obj {}".format(cage_power_limit, port, module_sm_obj))
