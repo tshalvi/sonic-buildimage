@@ -380,11 +380,11 @@ class Chassis(ChassisBase):
 
         Args:
             timeout: Timeout in milliseconds (optional). If timeout == 0,
-                this method will block until a change is detected.
+                this method will block until a change is detected. - Deprecated
 
         Returns:
             (bool, dict):
-                - True if call successful, False if not;
+                - True if call successful, False if not; - Deprecated, will always return True
                 - A nested dictionary where key is a device type,
                   value is a dictionary with key:value pairs in the format of
                   {'device_id':'device_event'},
@@ -403,52 +403,30 @@ class Chassis(ChassisBase):
             self.modules_mgmt_thread.start()
             self.threads.append(self.modules_mgmt_thread)
         self.initialize_sfp()
-        # Initialize SFP event first
-        # if not self.sfp_event:
-        #     from .sfp_event import sfp_event
-        #     self.sfp_event = sfp_event(self.RJ45_port_list)
-        #     self.sfp_event.initialize()
-        #
-        # wait_for_ever = (timeout == 0)
-        # # select timeout should be no more than 1000ms to ensure fast shutdown flow
-        # select_timeout = 1000.0 if timeout >= 1000 else float(timeout)
         port_dict = {}
         error_dict = {}
-        # begin = time.time()
+        i = 0
         while True:
-            print('get_change_event() acquiring queue lock')
+            logger.log_warning('get_change_event() acquiring queue lock iteration {}'.format(i))
             self.modules_queue_lock.acquire()
             if self.modules_changes_queue.qsize() > 0:
-                #with self.modules_changes_queue.mutex:
                 if True:
                     try:
-                        print('get_change_event() trying to get changes from queue')
+                        logger.log_warning('get_change_event() trying to get changes from queue')
                         port_dict = self.modules_changes_queue.get(timeout=1)
-                        print ('get_change_event() port_dict: {}'.format(port_dict))
+                        logger.log_warning ('get_change_event() port_dict: {}'.format(port_dict))
                     except queue.Empty:
-                        logger.log_info("failed to get item from modules changes queue")
-                        print("failed to get item from modules changes queue")
-            print('get_change_event() releasing queue lock')
+                        logger.log_warning("failed to get item from modules changes queue")
+            logger.log_warning('get_change_event() releasing queue lock iteration {}'.format(i))
             self.modules_queue_lock.release()
-            time.sleep(1)
-            # status = self.sfp_event.check_sfp_status(port_dict, error_dict, select_timeout)
-            # if bool(port_dict):
-            #     break
-            #
-            # if not wait_for_ever:
-            #     elapse = time.time() - begin
-            #     if elapse * 1000 > timeout:
-            #         break
 
-        # if status:
             if port_dict:
                 self.reinit_sfps(port_dict)
                 result_dict = {'sfp': port_dict}
-        #     if error_dict:
                 result_dict['sfp_error'] = error_dict
                 return True, result_dict
-        # else:
-        #     return True, {'sfp': {}}
+            time.sleep(1)
+            i += 1
 
     def reinit_sfps(self, port_dict):
         """
