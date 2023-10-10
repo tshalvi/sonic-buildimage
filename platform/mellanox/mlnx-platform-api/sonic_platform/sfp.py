@@ -160,31 +160,6 @@ limited_eeprom = {
 # Global logger class instance
 logger = Logger()
 
-
-<<<<<<< HEAD
-=======
-# SDK initializing stuff, called from chassis
-def initialize_sdk_handle():
-    rc, sdk_handle = sx_api_open(None)
-    if (rc != SX_STATUS_SUCCESS):
-        logger.log_warning("Failed to open api handle, please check whether SDK is running.")
-        sdk_handle = None
-
-    return sdk_handle
-
-
-def deinitialize_sdk_handle(sdk_handle):
-    if sdk_handle is not None:
-        rc = sx_api_close(sdk_handle)
-        if (rc != SX_STATUS_SUCCESS):
-            logger.log_warning("Failed to close api handle.")
-
-        return rc == SXD_STATUS_SUCCESS
-    else:
-         logger.log_warning("Sdk handle is none")
-         return False
-
-
 def is_independent_module(index):
     db = SonicV2Connector(use_unix_socket_path=False)
     db.connect(db.STATE_DB)
@@ -198,19 +173,6 @@ def is_independent_module(index):
     return result == SW_CONTROL_CONTROL_TYPE
 
 
-class SdkHandleContext(object):
-    def __init__(self):
-        self.sdk_handle = None
-
-    def __enter__(self):
-        self.sdk_handle = initialize_sdk_handle()
-        return self.sdk_handle
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        deinitialize_sdk_handle(self.sdk_handle)
-
-
->>>>>>> 4c84d775b... platform code changes to ignore EEPROM restirctions when dealing with CMIS modules on a platform that support Independent Mode
 class NvidiaSFPCommon(SfpOptoeBase):
     def __init__(self, sfp_index):
         super(NvidiaSFPCommon, self).__init__()
