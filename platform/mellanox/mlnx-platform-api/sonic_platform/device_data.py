@@ -320,3 +320,29 @@ class DeviceDataManager:
             # Currently, only fetching BIOS version is supported
             return ComponentCPLDSN2201.get_component_list()
         return ComponentCPLD.get_component_list()
+
+    @classmethod
+    @utils.read_only_cache()
+    def platform_supports_independent_mode(cls):
+        from sonic_py_common import device_info
+        (_, hwsku_dir) = device_info.get_paths_to_platform_and_hwsku_dirs()
+
+        INDEPENDENT_MODULE_SUPPORT_FIELD = 'SAI_INDEPENDENT_MODULE_MODE'
+        INDEPENDENT_MODULE_SUPPORT_DELIMITER = '='
+        INDEPNENT_MODULE_SUPPORT_TRUE_VALUE = '1'
+        SAI_PROFILE_FILE_NAME = 'sai.profile'
+        sai_profile_path = hwsku_dir + '/' + SAI_PROFILE_FILE_NAME
+
+        try:
+            with open(sai_profile_path, "r", encoding='utf-8') as fd:
+                for line in fd:
+                    if line.startswith(INDEPENDENT_MODULE_SUPPORT_FIELD):
+                        if INDEPENDENT_MODULE_SUPPORT_DELIMITER in line:
+                            split_line = line.split(INDEPENDENT_MODULE_SUPPORT_DELIMITER)
+                            if (len(split_line) > 1):
+                                independent_mode_value = split_line[1].strip()
+                                return True if independent_mode_value == INDEPNENT_MODULE_SUPPORT_TRUE_VALUE else False
+                return False
+
+        except FileNotFoundError:
+            return False
