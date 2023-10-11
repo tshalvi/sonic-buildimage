@@ -130,12 +130,7 @@ class Chassis(ChassisBase):
         self.modules_mgmt_thread = threading.Thread()
         self.modules_changes_queue = queue.Queue()
         self.modules_queue_lock = threading.Lock()
-        #self.modules_changes_dict = {}
-
-        self.is_independent_modules_system = False
-        SAI_INDEPENDENT_MODULE_MODE = True
-        if SAI_INDEPENDENT_MODULE_MODE:
-            self.is_independent_modules_system = True
+        self.modules_mgmt_task_stopping_event = threading.Event()
 
         logger.log_info("Chassis loaded successfully")
 
@@ -146,6 +141,11 @@ class Chassis(ChassisBase):
         if self._sfp_list:
             if self.sfp_module.SFP.shared_sdk_handle:
                 self.sfp_module.deinitialize_sdk_handle(self.sfp_module.SFP.shared_sdk_handle)
+
+        #self.modules_mgmt_task_stopping_event.set()
+        #logger.log_warning('set modules_mgmt_task_stopping_event {self.modules_mgmt_task_stopping_event}')
+        #self.modules_mgmt_thread.join(timeout=10)
+        #logger.log_warning('joined modules_mgmt_thread thread')
 
     @property
     def RJ45_port_list(self):
@@ -399,7 +399,8 @@ class Chassis(ChassisBase):
         if not self.modules_mgmt_thread.is_alive():
             # open new SFP change events thread
             self.modules_mgmt_thread = modules_mgmt.ModulesMgmtTask(q=self.modules_changes_queue
-                                                                          , l=self.modules_queue_lock)
+                                                    , l=self.modules_queue_lock
+                                                    , main_thread_stop_event = self.modules_mgmt_task_stopping_event)
             self.modules_mgmt_thread.start()
             self.threads.append(self.modules_mgmt_thread)
         self.initialize_sfp()
