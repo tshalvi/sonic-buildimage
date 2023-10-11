@@ -95,13 +95,13 @@ class ModulesMgmtTask(threading.Thread):
             , STATE_POWER_LIMIT_ERROR: STATE_POWER_LIMIT_ERROR
             , STATE_SYSFS_ERROR: STATE_SYSFS_ERROR
         }
-        logger.log_warning("getting func for state {} for port {}".format(sm, port))
+        logger.log_info("getting func for state {} for port {}".format(sm, port))
         try:
             func = SFP_SM_ENUM[sm]
-            logger.log_warning("got func {} for state {} for port {}".format(func, sm, port))
+            logger.log_info("got func {} for state {} for port {}".format(func, sm, port))
             return func
         except KeyError as e:
-            logger.log_warning("exception {} for port {}".format(e, port))
+            logger.log_info("exception {} for port {}".format(e, port))
         return None
 
     def run(self):
@@ -110,7 +110,7 @@ class ModulesMgmtTask(threading.Thread):
         #hwsku = device_info.get_hwsku()
         independent_file = INDEP_PROFILE_FILE.format(hwsku_dir)
         if os.path.isfile(independent_file):
-            logger.log_warning("file {} found, checking content for independent mode value".format(independent_file))
+            logger.log_info("file {} found, checking content for independent mode value".format(independent_file))
             with open(independent_file, "r") as independent_file_fd:
                 independent_file_content = independent_file_fd.read()
                 if SAI_INDEP_MODULE_MODE in independent_file_content and \
@@ -118,10 +118,10 @@ class ModulesMgmtTask(threading.Thread):
                     independent_file_splitted = independent_file_content.split(SAI_INDEP_MODULE_MODE_DELIMITER)
                     if (len(independent_file_splitted) > 1):
                         self.is_supported_indep_mods_system = int(independent_file_splitted[1]) == int(SAI_INDEP_MODULE_MODE_TRUE_STR)
-                        logger.log_warning("file {} found, system will work in independent mode".format(independent_file))
-                        logger.log_warning("value of indep mode var: {} found in file".format(independent_file_splitted[1]))
+                        logger.log_info("file {} found, system will work in independent mode".format(independent_file))
+                        logger.log_info("value of indep mode var: {} found in file".format(independent_file_splitted[1]))
         else:
-            logger.log_warning("file {} not found, system stays in legacy mode".format(independent_file))
+            logger.log_info("file {} not found, system stays in legacy mode".format(independent_file))
 
         # static init - at first go over all ports and check each one if it's independent module or legacy
         self.sfp_changes_dict = {}
@@ -136,9 +136,9 @@ class ModulesMgmtTask(threading.Thread):
             temp_module_sm = ModuleStateMachine(port_num=port, initial_state=STATE_HW_NOT_PRESENT
                                               , current_state=STATE_HW_NOT_PRESENT)
             module_fd_indep_path = SYSFS_INDEPENDENT_FD_PRESENCE.format(port)
-            logger.log_warning("system in indep mode: {} port {}".format(self.is_supported_indep_mods_system, port))
+            logger.log_info("system in indep mode: {} port {}".format(self.is_supported_indep_mods_system, port))
             if self.is_supported_indep_mods_system and os.path.isfile(module_fd_indep_path):
-                logger.log_warning("system in indep mode: {} port {} reading file {}".format(self.is_supported_indep_mods_system, port, module_fd_indep_path))
+                logger.log_info("system in indep mode: {} port {} reading file {}".format(self.is_supported_indep_mods_system, port, module_fd_indep_path))
                 temp_module_sm.set_is_indep_modules(True)
                 temp_module_sm.set_module_fd_path(module_fd_indep_path)
                 module_fd = open(module_fd_indep_path, "r")
@@ -152,7 +152,7 @@ class ModulesMgmtTask(threading.Thread):
             self.modules_lock_list.append(threading.Lock())
             temp_module_sm.set_poll_obj(self.poll_obj)
             # start SM for this independent module
-            logger.log_warning("adding temp_module_sm {} to sfp_port_dict".format(temp_module_sm))
+            logger.log_info("adding temp_module_sm {} to sfp_port_dict".format(temp_module_sm))
             self.sfp_port_dict_initial[port] = temp_module_sm
             self.sfp_port_dict[port] = temp_module_sm
 
@@ -160,32 +160,32 @@ class ModulesMgmtTask(threading.Thread):
         # need at least 1 module in final state until it makes sense to send changes dict
         is_final_state_module = False
         all_static_detection_done = False
-        logger.log_warning("sfp_port_dict before starting static detection: {}".format(self.sfp_port_dict))
+        logger.log_info("sfp_port_dict before starting static detection: {}".format(self.sfp_port_dict))
         # static detection - loop on different state for all ports until all done
         while not self.main_thread_stop_event and not all_static_detection_done:
-            logger.log_warning("static detection running iteration {}".format(i))
+            logger.log_info("static detection running iteration {}".format(i))
             waiting_list_len = len(self.waiting_modules_list)
             sfp_port_dict_keys_len = len(self.sfp_port_dict.keys())
             if waiting_list_len == sfp_port_dict_keys_len:
-                logger.log_warning("static detection length of waiting list {}: {} and sfp port dict keys {}:{} is the same, sleeping 1 second..."
+                logger.log_info("static detection length of waiting list {}: {} and sfp port dict keys {}:{} is the same, sleeping 1 second..."
                               .format(waiting_list_len, self.waiting_modules_list, sfp_port_dict_keys_len, self.sfp_port_dict.keys()))
                 time.sleep(1)
             else:
-                logger.log_warning("static detectionlength of waiting list {}: {} and sfp port dict keys {}: {} is different, NOT sleeping 1 second"
+                logger.log_info("static detectionlength of waiting list {}: {} and sfp port dict keys {}: {} is different, NOT sleeping 1 second"
                               .format(waiting_list_len, self.waiting_modules_list, sfp_port_dict_keys_len, self.sfp_port_dict.keys()))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
-                logger.log_warning(f'static detection STATE_LOG {port_num}: curr_state is {curr_state}')
+                logger.log_info(f'static detection STATE_LOG {port_num}: curr_state is {curr_state}')
                 func = self.get_sm_func(curr_state, port_num)
-                logger.log_warning("static detection got returned func {} for state {}".format(func, curr_state))
+                logger.log_info("static detection got returned func {} for state {}".format(func, curr_state))
                 try:
                     if not isinstance(func, str):
                         next_state = func(port_num, module_sm_obj)
                 except TypeError as e:
-                    logger.log_warning("static detection exception {} for port {} traceback:\n{}".format(e, port_num, traceback.format_exc()))
+                    logger.log_info("static detection exception {} for port {} traceback:\n{}".format(e, port_num, traceback.format_exc()))
                     module_sm_obj.set_final_state(STATE_ERROR_HANDLER)
                     continue
-                logger.log_warning(f'static detection STATE_LOG {port_num}: next_state is {next_state}')
+                logger.log_info(f'static detection STATE_LOG {port_num}: next_state is {next_state}')
                 if self.timer.is_alive():
                     logger.log_info("static detection timer threads is alive, acquiring lock")
                     self.modules_lock_list[port_num].acquire()
@@ -194,7 +194,7 @@ class ModulesMgmtTask(threading.Thread):
                     module_sm_obj.set_next_state(next_state)
                     module_sm_obj.advance_state()
                 if module_sm_obj.get_final_state():
-                    logger.log_warning(f'static detection STATE_LOG {port_num}: enter final state {module_sm_obj.get_final_state()}')
+                    logger.log_info(f'static detection STATE_LOG {port_num}: enter final state {module_sm_obj.get_final_state()}')
                     is_final_state_module = True
                 if self.timer.is_alive():
                     self.modules_lock_list[port_num].release()
@@ -202,18 +202,18 @@ class ModulesMgmtTask(threading.Thread):
                 logger.log_info("static detection timer thread is_alive {} port {}".format(is_timer_alive, port_num))
                 if STATE_NOT_POWERED == curr_state:
                     if not is_timer_alive:
-                        logger.log_warning ("static detection curr_state is {} and timer thread is_alive {}, running timer task thread"
+                        logger.log_info ("static detection curr_state is {} and timer thread is_alive {}, running timer task thread"
                                .format(curr_state, is_timer_alive))
                         # call timer task
                         self.timer = threading.Timer(1.0, self.timerTask)
                         self.timer.start()
                     self.timer_queue.put(module_sm_obj)
                     if self.timer.is_alive():
-                        logger.log_warning("timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
+                        logger.log_info("timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].acquire()
                     module_sm_obj.set_next_state(next_state)
                     if self.timer.is_alive():
-                        logger.log_warning("timer thread is_alive {}, releasing module obj".format(self.timer.is_alive()))
+                        logger.log_info("timer thread is_alive {}, releasing module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].release()
 
             if is_final_state_module:
@@ -221,20 +221,20 @@ class ModulesMgmtTask(threading.Thread):
                 self.delete_ports_from_dict()
                 self.send_changes_to_shared_queue()
             i += 1
-            logger.log_warning("sfp_port_dict: {}".format(self.sfp_port_dict))
+            logger.log_info("sfp_port_dict: {}".format(self.sfp_port_dict))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
-                logger.log_warning("static detection port_num: {} initial state: {} current_state: {} next_state: {}"
+                logger.log_info("static detection port_num: {} initial state: {} current_state: {} next_state: {}"
                        .format(port_num, module_sm_obj.initial_state, module_sm_obj.get_current_state()
                                , module_sm_obj.get_next_state()))
             sfp_port_dict_keys_len = len(self.sfp_port_dict.keys())
             if sfp_port_dict_keys_len == 0:
-                logger.log_warning("static detection len of keys of sfp_port_dict is 0: {}".format(sfp_port_dict_keys_len))
+                logger.log_info("static detection len of keys of sfp_port_dict is 0: {}".format(sfp_port_dict_keys_len))
                 all_static_detection_done = True
             else:
-                logger.log_warning("static detection len of keys of sfp_port_dict is not 0: {}".format(sfp_port_dict_keys_len))
-            logger.log_warning("static detection all_static_detection_done: {}".format(all_static_detection_done))
+                logger.log_info("static detection len of keys of sfp_port_dict is not 0: {}".format(sfp_port_dict_keys_len))
+            logger.log_info("static detection all_static_detection_done: {}".format(all_static_detection_done))
 
-        logger.log_warning("sfp_port_dict before dynamic detection: {}".format(self.sfp_port_dict))
+        logger.log_info("sfp_port_dict before dynamic detection: {}".format(self.sfp_port_dict))
         # dynamic detection - loop on polling changes, run state machine for them and put them into shared queue
         i = 0
         # need at least 1 module in final state until it makes sense to send changes dict
@@ -246,7 +246,7 @@ class ModulesMgmtTask(threading.Thread):
             self.fds_events_count_dict[module_obj.port_num] = { 'presence' : 0 , 'power_good' : 0 }
         dummy_read = False
         while not self.main_thread_stop_event:
-            logger.log_warning("dynamic detection running iteration {}".format(i))
+            logger.log_info("dynamic detection running iteration {}".format(i))
             # dummy read all sysfs fds before polling them due to linux kernel implementation of poll
             if not dummy_read:
                 for fd_fileno in self.fds_mapping_to_obj:
@@ -259,25 +259,25 @@ class ModulesMgmtTask(threading.Thread):
                     elif fd_name in ['power_good']:
                         module_fd_path = module_obj.module_power_good_fd_path
                     try:
-                        logger.log_warning("dynamic detection dummy reading from fd path {} for port {}"
+                        logger.log_info("dynamic detection dummy reading from fd path {} for port {}"
                                       .format(module_fd_path, module_obj.port_num))
                         val = module_fd.read()
                         module_fd.seek(0)
                         val_int = None
                         if len(val) > 0:
                             val_int = int(val)
-                        logger.log_warning("dynamic detection dummy read presence {} int {} for port {} before polling"
+                        logger.log_info("dynamic detection dummy read presence {} int {} for port {} before polling"
                                       .format(val, val_int, module_obj.port_num))
                     except Exception as e:
-                        logger.log_warning("dynamic detection exception on dummy read presence {} for port {} traceback:\n{}"
+                        logger.log_info("dynamic detection exception on dummy read presence {} for port {} traceback:\n{}"
                                       .format(e, module_obj.port_num, traceback.format_exc()))
                 dummy_read = True
             # poll for changes with 1 second timeout
             fds_events = self.poll_obj.poll(1000)
-            logger.log_warning("dynamic detection polled obj checking fds_events iteration {}".format(i))
+            logger.log_info("dynamic detection polled obj checking fds_events iteration {}".format(i))
             for fd, event in fds_events:
                 # get modules object from fd according to saved key-value of fd-module obj saved earlier
-                logger.log_warning("dynamic detection working on fd {} event {}".format(fd, event))
+                logger.log_info("dynamic detection working on fd {} event {}".format(fd, event))
                 #module_obj = self.fds_mapping_to_obj[fd]
                 module_obj = self.fds_mapping_to_obj[fd_fileno]['module_obj']
                 module_fd = self.fds_mapping_to_obj[fd_fileno]['fd']
@@ -289,28 +289,28 @@ class ModulesMgmtTask(threading.Thread):
                 self.fds_events_count_dict[module_obj.port_num][fd_name] += 1
                 val = module_fd.read()
                 module_fd.seek(0)
-                logger.log_warning("dynamic detection got module_obj {} with port {} from fd number {} path {} count {}"
+                logger.log_info("dynamic detection got module_obj {} with port {} from fd number {} path {} count {}"
                               .format(module_obj, module_obj.port_num, fd, module_fd_path, self.fds_events_count_dict[module_obj.port_num]))
                 if module_obj.port_num not in self.sfp_port_dict.keys():
-                    logger.log_warning("dynamic detection port {} not found in sfp_port_dict keys: {} resetting all states".format(module_obj.port_num, self.sfp_port_dict.keys()))
+                    logger.log_info("dynamic detection port {} not found in sfp_port_dict keys: {} resetting all states".format(module_obj.port_num, self.sfp_port_dict.keys()))
                     module_obj.reset_all_states()
                     # put again module obj in sfp_port_dict so next loop will work on it
                     self.sfp_port_dict[module_obj.port_num] = module_obj
                     self.delete_ports_from_state_db_list.append(module_obj.port_num)
             self.delete_ports_state_from_state_db(self.delete_ports_from_state_db_list)
-            logger.log_warning("dynamic detection sleeping 1 second...")
+            logger.log_info("dynamic detection sleeping 1 second...")
             time.sleep(1)
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
-                logger.log_warning(f'dynamic detection STATE_LOG {port_num}: curr_state is {curr_state}')
+                logger.log_info(f'dynamic detection STATE_LOG {port_num}: curr_state is {curr_state}')
                 func = self.get_sm_func(curr_state, port)
-                logger.log_warning("dynamic detection got returned func {} for state {}".format(func, curr_state))
+                logger.log_info("dynamic detection got returned func {} for state {}".format(func, curr_state))
                 try:
                     next_state = func(port_num, module_sm_obj, dynamic=True)
                 except TypeError as e:
-                    logger.log_warning("exception {} for port {}".format(e, port_num))
+                    logger.log_info("exception {} for port {}".format(e, port_num))
                     continue
-                logger.log_warning(f'dynamic detection STATE_LOG {port_num}: next_state is {next_state}')
+                logger.log_info(f'dynamic detection STATE_LOG {port_num}: next_state is {next_state}')
                 if self.timer.is_alive():
                     logger.log_info("dynamic detection timer threads is alive, acquiring lock")
                     self.modules_lock_list[port_num].acquire()
@@ -326,18 +326,18 @@ class ModulesMgmtTask(threading.Thread):
                 logger.log_info("dynamic detection timer thread is_alive {} port {}".format(is_timer_alive, port_num))
                 if STATE_NOT_POWERED == curr_state:
                     if not is_timer_alive:
-                        logger.log_warning("dynamic detection curr_state is {} and timer thread is_alive {}, running timer task thread"
+                        logger.log_info("dynamic detection curr_state is {} and timer thread is_alive {}, running timer task thread"
                                       .format(curr_state, is_timer_alive))
                         # call timer task
                         self.timer = threading.Timer(1.0, self.timerTask)
                         self.timer.start()
                     self.timer_queue.put(module_sm_obj)
                     if self.timer.is_alive():
-                        logger.log_warning("dynamic detection timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
+                        logger.log_info("dynamic detection timer thread is_alive {}, locking module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].acquire()
                     module_sm_obj.set_next_state(next_state)
                     if self.timer.is_alive():
-                        logger.log_warning(
+                        logger.log_info(
                             "dynamic detection timer thread is_alive {}, releasing module obj".format(self.timer.is_alive()))
                         self.modules_lock_list[port_num].release()
 
@@ -346,9 +346,9 @@ class ModulesMgmtTask(threading.Thread):
                 self.delete_ports_from_dict(dynamic=True)
                 self.send_changes_to_shared_queue(dynamic=True)
             i += 1
-            logger.log_warning("sfp_port_dict: {}".format(self.sfp_port_dict))
+            logger.log_info("sfp_port_dict: {}".format(self.sfp_port_dict))
             for port_num, module_sm_obj in self.sfp_port_dict.items():
-                logger.log_warning("port_num: {} module_sm_obj initial state: {} current_state: {} next_state: {}"
+                logger.log_info("port_num: {} module_sm_obj initial state: {} current_state: {} next_state: {}"
                        .format(port_num, module_sm_obj.initial_state, module_sm_obj.get_current_state(), module_sm_obj.get_next_state()))
 
 
@@ -361,23 +361,23 @@ class ModulesMgmtTask(threading.Thread):
             try:
                 val_int = utils.read_int_from_file(module_fd_indep_path)
                 if 0 == val_int:
-                    logger.log_warning("returning {} for val {}".format(STATE_HW_NOT_PRESENT, val_int))
+                    logger.log_info("returning {} for val {}".format(STATE_HW_NOT_PRESENT, val_int))
                     module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
                     return STATE_HW_NOT_PRESENT
                 elif 1 == val_int:
                     if not self.is_supported_indep_mods_system:
                         module_sm_obj.set_final_state(STATE_HW_PRESENT)
-                    logger.log_warning("returning {} for val {}".format(STATE_HW_PRESENT, val_int))
+                    logger.log_info("returning {} for val {}".format(STATE_HW_PRESENT, val_int))
                     return STATE_HW_PRESENT
             except Exception as e:
-                logger.log_warning("exception {} for port {} setting final state STATE_ERROR_HANDLER".format(e, port))
+                logger.log_info("exception {} for port {} setting final state STATE_ERROR_HANDLER".format(e, port))
                 module_sm_obj.set_final_state(STATE_ERROR_HANDLER)
                 return STATE_ERROR_HANDLER
         module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
         return STATE_HW_NOT_PRESENT
 
     def checkIfModuleAvailable(self, port, module_sm_obj, dynamic=False):
-        logger.log_warning("enter check_if_module_available port {} module_sm_obj {}".format(port, module_sm_obj))
+        logger.log_info("enter check_if_module_available port {} module_sm_obj {}".format(port, module_sm_obj))
         module_fd_indep_path = SYSFS_INDEPENDENT_FD_POWER_GOOD.format(port)
         if os.path.isfile(module_fd_indep_path):
             try:
@@ -393,28 +393,28 @@ class ModulesMgmtTask(threading.Thread):
                 self.fds_mapping_to_obj[module_sm_obj.module_power_good_fd.fileno()] = { 'module_obj' : module_sm_obj
                                                     , 'fd':module_sm_obj.module_power_good_fd, 'fd_name' : 'power_good'}
                 if 0 == val_int:
-                    logger.log_warning(f'port {port} power is not good')
+                    logger.log_info(f'port {port} power is not good')
                     module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
                     return STATE_HW_NOT_PRESENT
                 elif 1 == val_int:
-                    logger.log_warning(f'port {port} power is good')
+                    logger.log_info(f'port {port} power is good')
                     return STATE_MODULE_AVAILABLE
             except Exception as e:
-                logger.log_warning("exception {} for port {}".format(e, port))
+                logger.log_info("exception {} for port {}".format(e, port))
                 return STATE_HW_NOT_PRESENT
-        logger.log_warning(f'port {port} has no power good file {module_fd_indep_path}')
+        logger.log_info(f'port {port} has no power good file {module_fd_indep_path}')
         module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
         return STATE_HW_NOT_PRESENT
 
     def checkIfPowerOn(self, port, module_sm_obj, dynamic=False):
-        logger.log_warning(f'enter checkIfPowerOn for port {port}')
+        logger.log_info(f'enter checkIfPowerOn for port {port}')
         module_fd_indep_path = SYSFS_INDEPENDENT_FD_POWER_ON.format(port)
         if os.path.isfile(module_fd_indep_path):
             try:
                 val = utils.read_int_from_file(module_fd_indep_path)
                 val_int = int(val)
                 if 0 == val_int:
-                    logger.log_warning(f'port {port} is not powered')
+                    logger.log_info(f'port {port} is not powered')
                     return STATE_NOT_POWERED
                 elif 1 == val_int:
                     if not module_sm_obj.wait_for_power_on and \
@@ -423,7 +423,7 @@ class ModulesMgmtTask(threading.Thread):
                         xcvr_api = sfp.get_xcvr_api()
                         # only if xcvr_api is None or if it is not active optics cables need reset
                         if not xcvr_api or xcvr_api.is_flat_memory():
-                            logger.log_warning(f'port {port} is powered, but need reset')
+                            logger.log_info(f'port {port} is powered, but need reset')
                             utils.write_file(SYSFS_INDEPENDENT_FD_HW_RESET.format(port), 0)
                             module_sm_obj.reset_start_time = time.time()
                             module_sm_obj.wait_for_power_on = True
@@ -432,10 +432,10 @@ class ModulesMgmtTask(threading.Thread):
                             module_sm_obj.wait_for_power_on = True
                             self.waiting_modules_list.add(module_sm_obj.port_num)
                             return STATE_NOT_POWERED
-                    logger.log_warning(f'port {port} is powered, does not need reset')
+                    logger.log_info(f'port {port} is powered, does not need reset')
                     return STATE_POWERED
             except Exception as e:
-                logger.log_warning(f'got exception {e} in checkIfPowerOn')
+                logger.log_info(f'got exception {e} in checkIfPowerOn')
                 module_sm_obj.set_final_state(STATE_HW_NOT_PRESENT)
                 return STATE_HW_NOT_PRESENT
 
@@ -446,12 +446,12 @@ class ModulesMgmtTask(threading.Thread):
             module_fd_indep_path_r = SYSFS_INDEPENDENT_FD_HW_RESET.format(port)
             try:
                 if os.path.isfile(module_fd_indep_path_po):
-                    logger.log_warning("powerOnModule powering on via {} for port {}".format(module_fd_indep_path_po, port))
+                    logger.log_info("powerOnModule powering on via {} for port {}".format(module_fd_indep_path_po, port))
                     # echo 1 > /sys/module/sx_core/$asic/$module/power_on
                     with open(module_fd_indep_path_po, "w") as module_fd:
                         module_fd.write("1")
                 if os.path.isfile(module_fd_indep_path_r):
-                    logger.log_warning("powerOnModule resetting via {} for port {}".format(module_fd_indep_path_r, port))
+                    logger.log_info("powerOnModule resetting via {} for port {}".format(module_fd_indep_path_r, port))
                     # echo 0 > /sys/module/sx_core/$asic/$module/hw_reset
                     with open(module_fd_indep_path_r, "w") as module_fd:
                         module_fd.write("0")
@@ -459,30 +459,30 @@ class ModulesMgmtTask(threading.Thread):
                 module_sm_obj.wait_for_power_on = True
                 self.waiting_modules_list.add(module_sm_obj.port_num)
             except Exception as e:
-                logger.log_warning("exception in powerOnModule {} for port {}".format(e, port))
+                logger.log_info("exception in powerOnModule {} for port {}".format(e, port))
                 return STATE_HW_NOT_PRESENT
         return STATE_NOT_POWERED
 
     def checkModuleType(self, port, module_sm_obj, dynamic=False):
-        logger.log_warning("enter checkModuleType port {} module_sm_obj {}".format(port, module_sm_obj))
+        logger.log_info("enter checkModuleType port {} module_sm_obj {}".format(port, module_sm_obj))
         sfp = sfp_module.SFP(port)
         xcvr_api = sfp.get_xcvr_api()
         if not xcvr_api:
-            logger.log_warning("checkModuleType calling sfp reinit for port {} module_sm_obj {}".format(port, module_sm_obj))
+            logger.log_info("checkModuleType calling sfp reinit for port {} module_sm_obj {}".format(port, module_sm_obj))
             sfp.reinit()
-            logger.log_warning("checkModuleType setting as FW control as xcvr_api is empty for port {} module_sm_obj {}".format(port, module_sm_obj))
+            logger.log_info("checkModuleType setting as FW control as xcvr_api is empty for port {} module_sm_obj {}".format(port, module_sm_obj))
             return STATE_FW_CONTROL
         field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.ID_FIELD)
         module_type_ba = xcvr_api.xcvr_eeprom.reader(field.get_offset(), field.get_size())
         if module_type_ba is None:
-            logger.log_warning("checkModuleType module_type is None for port {} - checking if we didnt retry yet max number of retries: {}".format(port, MAX_EEPROM_ERROR_RESET_RETRIES))
+            logger.log_info("checkModuleType module_type is None for port {} - checking if we didnt retry yet max number of retries: {}".format(port, MAX_EEPROM_ERROR_RESET_RETRIES))
             # if we didnt do this retry yet - do it up to 3 times - workaround for FW issue blocking upper page access
             if module_sm_obj.eeprom_poweron_reset_retries < MAX_EEPROM_ERROR_RESET_RETRIES:
-                logger.log_warning("checkModuleType module_type is None retrying by falling back to STATE_NOT_POWERED eeprom reset retries {}"
+                logger.log_info("checkModuleType module_type is None retrying by falling back to STATE_NOT_POWERED eeprom reset retries {}"
                               " for port {}".format(module_sm_obj.eeprom_poweron_reset_retries, port))
                 if module_sm_obj.eeprom_poweron_reset_retries % 2 == 0:
                     utils.write_file(SYSFS_INDEPENDENT_FD_HW_RESET.format(port), "0")
-                    logger.log_warning("checkModuleType sleeping 1 second...")
+                    logger.log_info("checkModuleType sleeping 1 second...")
                     time.sleep(1)
                 else:
                     utils.write_file(SYSFS_INDEPENDENT_FD_HW_RESET.format(port), "1")
@@ -490,23 +490,23 @@ class ModulesMgmtTask(threading.Thread):
                 module_sm_obj.eeprom_poweron_reset_retries += 1
                 return STATE_NOT_POWERED
             else:
-                logger.log_warning("checkModuleType module_type is None and already retried - setting as STATE_ERROR_HANDLER"
+                logger.log_info("checkModuleType module_type is None and already retried - setting as STATE_ERROR_HANDLER"
                               "for port {}".format(port))
                 module_sm_obj.set_final_state(STATE_ERROR_HANDLER)
                 return STATE_ERROR_HANDLER
         module_type = int.from_bytes(module_type_ba, "big")
-        logger.log_warning("got module_type {} in check_module_type port {} module_sm_obj {}".format(module_type, port, module_sm_obj))
+        logger.log_info("got module_type {} in check_module_type port {} module_sm_obj {}".format(module_type, port, module_sm_obj))
         # QSFP-DD ID is 24, OSFP ID is 25 - only these 2 are supported currently as independent module - SW controlled
         if module_type not in [24, 25]:
-            logger.log_warning("setting STATE_FW_CONTROL for {} in check_module_type port {} module_sm_obj {}".format(module_type, port, module_sm_obj))
+            logger.log_info("setting STATE_FW_CONTROL for {} in check_module_type port {} module_sm_obj {}".format(module_type, port, module_sm_obj))
             module_sm_obj.set_final_state = STATE_FW_CONTROL
             return STATE_FW_CONTROL
         else:
             if xcvr_api.is_flat_memory():
-                logger.log_warning("check_module_type port {} setting STATE_FW_CONTROL module ID {} due to flat_mem device"
+                logger.log_info("check_module_type port {} setting STATE_FW_CONTROL module ID {} due to flat_mem device"
                               .format(module_type, port))
                 return STATE_FW_CONTROL
-            logger.log_warning("checking power cap for {} in check_module_type port {} module_sm_obj {}"
+            logger.log_info("checking power cap for {} in check_module_type port {} module_sm_obj {}"
                                .format(module_type, port, module_sm_obj))
             power_cap = self.checkPowerCap(port, module_sm_obj)
             if power_cap is STATE_POWER_LIMIT_ERROR:
@@ -517,11 +517,11 @@ class ModulesMgmtTask(threading.Thread):
                 # from byte 2 bits 3-2:
                 # 00b means module supports up to 400KHz
                 # 01b means module supports up to 1MHz
-                logger.log_warning(f"check_module_type reading mci max frequency for port {port}")
+                logger.log_info(f"check_module_type reading mci max frequency for port {port}")
                 read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
-                logger.log_warning(f"check_module_type read mci max frequency {read_mci} for port {port}")
+                logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
                 mci_bits = read_mci & 0b00001100
-                logger.log_warning(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
+                logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
                 # Then, set it to frequency Sysfs using:
                 # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
                 indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
@@ -529,27 +529,27 @@ class ModulesMgmtTask(threading.Thread):
                 return STATE_SW_CONTROL
 
     def checkPowerCap(self, port, module_sm_obj, dynamic=False):
-        logger.log_warning("enter checkPowerCap port {} module_sm_obj {}".format(port, module_sm_obj))
+        logger.log_info("enter checkPowerCap port {} module_sm_obj {}".format(port, module_sm_obj))
         #sfp_base_module = SfpBase()
         sfp = sfp_module.SFP(port)
         xcvr_api = sfp.get_xcvr_api()
         field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)
         powercap_ba = xcvr_api.xcvr_eeprom.reader(field.get_offset(), field.get_size())
-        logger.log_warning("checkPowerCap got powercap bytearray {} for port {} module_sm_obj {}".format(powercap_ba, port, module_sm_obj))
+        logger.log_info("checkPowerCap got powercap bytearray {} for port {} module_sm_obj {}".format(powercap_ba, port, module_sm_obj))
         powercap = int.from_bytes(powercap_ba, "big")
-        logger.log_warning("checkPowerCap got powercap {} for port {} module_sm_obj {}".format(powercap, port, module_sm_obj))
+        logger.log_info("checkPowerCap got powercap {} for port {} module_sm_obj {}".format(powercap, port, module_sm_obj))
         indep_fd_power_limit = self.get_sysfs_ethernet_port_fd(SYSFS_INDEPENDENT_FD_POWER_LIMIT, port)
         #with open(indep_fd_power_limit, "r") as power_limit_fd:
         #    cage_power_limit = power_limit_fd.read()
         cage_power_limit = utils.read_int_from_file(indep_fd_power_limit)
-        logger.log_warning("checkPowerCap got cage_power_limit {} for port {} module_sm_obj {}".format(cage_power_limit, port, module_sm_obj))
+        logger.log_info("checkPowerCap got cage_power_limit {} for port {} module_sm_obj {}".format(cage_power_limit, port, module_sm_obj))
         if powercap > int(cage_power_limit):
-            logger.log_warning("checkPowerCap powercap {} != cage_power_limit {} for port {} module_sm_obj {}".format(powercap, cage_power_limit, port, module_sm_obj))
+            logger.log_info("checkPowerCap powercap {} != cage_power_limit {} for port {} module_sm_obj {}".format(powercap, cage_power_limit, port, module_sm_obj))
             module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
             return STATE_POWER_LIMIT_ERROR
 
     def saveModuleControlMode(self, port, module_sm_obj, dynamic=False):
-        logger.log_warning("saveModuleControlMode setting current state {} for port {} as final state".format(module_sm_obj.get_current_state(), port))
+        logger.log_info("saveModuleControlMode setting current state {} for port {} as final state".format(module_sm_obj.get_current_state(), port))
         # bug - need to find root cause and fix
         #module_sm_obj.set_final_state(module_sm_obj.get_current_state())
         state = module_sm_obj.get_current_state()
@@ -559,56 +559,56 @@ class ModulesMgmtTask(threading.Thread):
             indep_fd_fw_control = SYSFS_INDEPENDENT_FD_FW_CONTROL.format(port)
             with open(indep_fd_fw_control, "w") as fw_control_fd:
                 fw_control_fd.write("0")
-            logger.log_warning("saveModuleControlMode set FW control for state {} port {}".format(state, port))
+            logger.log_info("saveModuleControlMode set FW control for state {} port {}".format(state, port))
             module_fd_legacy_path = SYSFS_LEGACY_FD_PRESENCE.format(port)
             module_sm_obj.set_module_fd_path(module_fd_legacy_path)
             module_fd = open(module_fd_legacy_path, "r")
             module_sm_obj.set_module_fd(module_fd)
-            logger.log_warning("saveModuleControlMode changed module fd to legacy present for port {}".format(port))
+            logger.log_info("saveModuleControlMode changed module fd to legacy present for port {}".format(port))
         # register the module's sysfs fd to poller with ERR and PRI attrs
-        logger.log_warning("saveModuleControlMode registering sysfs fd {} number {} path {} for port {}"
+        logger.log_info("saveModuleControlMode registering sysfs fd {} number {} path {} for port {}"
                       .format(module_sm_obj.module_fd, module_sm_obj.module_fd.fileno(), module_sm_obj.set_module_fd_path, port))
         self.poll_obj.register(module_sm_obj.module_fd, select.POLLERR | select.POLLPRI)
         self.fds_mapping_to_obj[module_sm_obj.module_fd.fileno()] = { 'module_obj' : module_sm_obj
                                                     , 'fd': module_sm_obj.module_fd, 'fd_name' : 'presence' }
         module_sm_obj.set_poll_obj(self.poll_obj)
-        logger.log_warning("saveModuleControlMode set current state {} for port {} as final state {}".format(
+        logger.log_info("saveModuleControlMode set current state {} for port {} as final state {}".format(
             module_sm_obj.get_current_state(), port, module_sm_obj.get_final_state()))
 
     def timerTask(self): # wakes up every 1 second
-        logger.log_warning("timerTask entered run state")
+        logger.log_info("timerTask entered run state")
         empty = False
         i = 0
         while not empty:
-            logger.log_warning("timerTask while loop itartion {}".format(i))
+            logger.log_info("timerTask while loop itartion {}".format(i))
             empty = True
             port_list_to_delete = []
             for port in self.waiting_modules_list:
-                logger.log_warning("timerTask working on port {}".format(port))
+                logger.log_info("timerTask working on port {}".format(port))
                 empty = False
                 module = self.sfp_port_dict[port]
-                logger.log_warning("timerTask got module with port_num {} from port {}".format(module.port_num, port))
+                logger.log_info("timerTask got module with port_num {} from port {}".format(module.port_num, port))
                 state = module.get_current_state()
                 if module and state == STATE_NOT_POWERED:
-                    logger.log_warning("timerTask module {} current_state {} counting seconds since reset_start_time"
+                    logger.log_info("timerTask module {} current_state {} counting seconds since reset_start_time"
                                   .format(module, module.get_current_state()))
                     if time.time() - module.reset_start_time >= 3:
                         # set next state as STATE_POWERED state to trigger the function of check module type
-                        logger.log_warning("timerTask module port {} locking lock of port {}".format(module.port_num, module.port_num))
+                        logger.log_info("timerTask module port {} locking lock of port {}".format(module.port_num, module.port_num))
                         self.modules_lock_list[module.port_num].acquire()
-                        logger.log_warning("timerTask module port {} setting next state to STATE_POWERED".format(module.port_num))
+                        logger.log_info("timerTask module port {} setting next state to STATE_POWERED".format(module.port_num))
                         module.set_next_state(STATE_POWERED)
-                        logger.log_warning("timerTask module port {} advancing next state".format(module.port_num))
+                        logger.log_info("timerTask module port {} advancing next state".format(module.port_num))
                         module.advance_state()
-                        logger.log_warning("timerTask module port {} releasing lock of port {}".format(port, module.port_num))
+                        logger.log_info("timerTask module port {} releasing lock of port {}".format(port, module.port_num))
                         self.modules_lock_list[module.port_num].release()
-                        logger.log_warning("timerTask module port {} adding to delete list to remove from waiting_modules_list".format(module.port_num))
+                        logger.log_info("timerTask module port {} adding to delete list to remove from waiting_modules_list".format(module.port_num))
                         port_list_to_delete.append(module.port_num)
-            logger.log_warning("timerTask deleting ports {} from waiting_modules_list...".format(port_list_to_delete))
+            logger.log_info("timerTask deleting ports {} from waiting_modules_list...".format(port_list_to_delete))
             for port in port_list_to_delete:            
-                logger.log_warning("timerTask deleting port {} from waiting_modules_list".format(port))
+                logger.log_info("timerTask deleting port {} from waiting_modules_list".format(port))
                 self.waiting_modules_list.remove(port)
-            logger.log_warning("timerTask waiting_modules_list after deletion: {}".format(self.waiting_modules_list))
+            logger.log_info("timerTask waiting_modules_list after deletion: {}".format(self.waiting_modules_list))
             time.sleep(1)
             i += 1
     def get_sysfs_legacy_ethernet_port_fd(self, sysfs_fd, port):
@@ -622,11 +622,11 @@ class ModulesMgmtTask(threading.Thread):
 
     def add_port_to_wait_reset(self, module_sm_obj):
         module_sm_obj.reset_start_time = time.time()
-        logger.log_warning("add_port_to_wait_reset reset_start_time {}".format(module_sm_obj.reset_start_time))
+        logger.log_info("add_port_to_wait_reset reset_start_time {}".format(module_sm_obj.reset_start_time))
         module_sm_obj.wait_for_power_on = True
-        logger.log_warning("add_port_to_wait_reset wait_for_power_on {}".format(module_sm_obj.wait_for_power_on))
+        logger.log_info("add_port_to_wait_reset wait_for_power_on {}".format(module_sm_obj.wait_for_power_on))
         self.waiting_modules_list.add(module_sm_obj.port_num)
-        logger.log_warning("add_port_to_wait_reset waiting_list after adding: {}".format(self.waiting_modules_list))
+        logger.log_info("add_port_to_wait_reset waiting_list after adding: {}".format(self.waiting_modules_list))
 
     def add_ports_state_to_state_db(self, dynamic=False):
         state_db = None
@@ -644,12 +644,12 @@ class ModulesMgmtTask(threading.Thread):
                 if final_state in [STATE_SW_CONTROL, STATE_FW_CONTROL]:
                     namespaces = multi_asic.get_front_end_namespaces()
                     for namespace in namespaces:
-                        logger.log_warning(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                        logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
                         state_db = SonicV2Connector(use_unix_socket_path=False, namespace=namespace)
-                        logger.log_warning(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
-                        logger.log_warning(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
+                        logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                        logger.log_info(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
                         if state_db is not None:
-                            logger.log_warning(
+                            logger.log_info(
                                 f"{detection_method} detection connecting to state_db for port {port} namespace {namespace}")
                             state_db.connect(state_db.STATE_DB)
                             if final_state in [STATE_FW_CONTROL]:
@@ -657,7 +657,7 @@ class ModulesMgmtTask(threading.Thread):
                             elif final_state in [STATE_SW_CONTROL]:
                                 control_type = 'SW_CONTROL'
                             table_name = STATE_DB_TABLE_NAME_PREFIX.format(port)
-                            logger.log_warning(f"{detection_method} detection setting state_db table {table_name} for port {port}"
+                            logger.log_info(f"{detection_method} detection setting state_db table {table_name} for port {port}"
                                                f" namespace {namespace} control_type {control_type}")
                             state_db.set(state_db.STATE_DB, table_name, "control_type", control_type)
 
@@ -667,30 +667,30 @@ class ModulesMgmtTask(threading.Thread):
         for port in ports:
             namespaces = multi_asic.get_front_end_namespaces()
             for namespace in namespaces:
-                logger.log_warning(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
                 state_db = SonicV2Connector(use_unix_socket_path=False, namespace=namespace)
-                logger.log_warning(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
+                logger.log_info(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
                 if state_db is not None:
-                    logger.log_warning(
+                    logger.log_info(
                         f"{detection_method} detection connecting to state_db for port {port} namespace {namespace}")
                     state_db.connect(state_db.STATE_DB)
                     table_name = STATE_DB_TABLE_NAME_PREFIX.format(port)
-                    logger.log_warning(f"{detection_method} detection deleting state_db table {table_name} "
+                    logger.log_info(f"{detection_method} detection deleting state_db table {table_name} "
                                        f"for port {port} namespace {namespace}")
                     state_db.delete(state_db.STATE_DB, table_name)
 
     def delete_ports_from_dict(self, dynamic=False):
         detection_method = 'dynamic' if dynamic else 'static'
-        logger.log_warning(f"{detection_method} detection sfp_port_dict before deletion: {self.sfp_port_dict}")
+        logger.log_info(f"{detection_method} detection sfp_port_dict before deletion: {self.sfp_port_dict}")
         for port in self.sfp_delete_list_from_port_dict:
             del self.sfp_port_dict[port]
         self.sfp_delete_list_from_port_dict = []
-        logger.log_warning("dynamic detection sfp_port_dict after deletion: {}".format(self.sfp_port_dict))
+        logger.log_info("dynamic detection sfp_port_dict after deletion: {}".format(self.sfp_port_dict))
 
     def send_changes_to_shared_queue(self, dynamic=False):
         detection_method = 'dynamic' if dynamic else 'static'
         if self.sfp_changes_dict:
-            logger.log_warning(f"{detection_method} detection putting sfp_changes_dict {self.sfp_changes_dict} "
+            logger.log_info(f"{detection_method} detection putting sfp_changes_dict {self.sfp_changes_dict} "
                                f"in modules changes queue...")
             try:
                 self.modules_queue_lock.acquire()
@@ -698,9 +698,9 @@ class ModulesMgmtTask(threading.Thread):
                 self.modules_queue_lock.release()
                 self.sfp_changes_dict = {}
             except queue.Full:
-                logger.log_warning(f"{detection_method} failed to put item from modules changes queue, queue is full")
+                logger.log_info(f"{detection_method} failed to put item from modules changes queue, queue is full")
         else:
-            logger.log_warning(f"{detection_method} sfp_changes_dict {self.sfp_changes_dict} is empty...")
+            logger.log_info(f"{detection_method} sfp_changes_dict {self.sfp_changes_dict} is empty...")
 
 
 class ModuleStateMachine(object):

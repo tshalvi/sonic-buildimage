@@ -143,9 +143,9 @@ class Chassis(ChassisBase):
                 self.sfp_module.deinitialize_sdk_handle(self.sfp_module.SFP.shared_sdk_handle)
 
         #self.modules_mgmt_task_stopping_event.set()
-        #logger.log_warning('set modules_mgmt_task_stopping_event {self.modules_mgmt_task_stopping_event}')
+        #logger.log_info('set modules_mgmt_task_stopping_event {self.modules_mgmt_task_stopping_event}')
         #self.modules_mgmt_thread.join(timeout=10)
-        #logger.log_warning('joined modules_mgmt_thread thread')
+        #logger.log_info('joined modules_mgmt_thread thread')
 
     @property
     def RJ45_port_list(self):
@@ -408,17 +408,17 @@ class Chassis(ChassisBase):
         error_dict = {}
         i = 0
         while True:
-            logger.log_warning('get_change_event() acquiring queue lock iteration {}'.format(i))
+            logger.log_info('get_change_event() acquiring queue lock iteration {}'.format(i))
             self.modules_queue_lock.acquire()
             if self.modules_changes_queue.qsize() > 0:
                 if True:
                     try:
-                        logger.log_warning('get_change_event() trying to get changes from queue')
+                        logger.log_info('get_change_event() trying to get changes from queue')
                         port_dict = self.modules_changes_queue.get(timeout=1)
-                        logger.log_warning ('get_change_event() port_dict: {}'.format(port_dict))
+                        logger.log_info ('get_change_event() port_dict: {}'.format(port_dict))
                     except queue.Empty:
-                        logger.log_warning("failed to get item from modules changes queue")
-            logger.log_warning('get_change_event() releasing queue lock iteration {}'.format(i))
+                        logger.log_info("failed to get item from modules changes queue")
+            logger.log_info('get_change_event() releasing queue lock iteration {}'.format(i))
             self.modules_queue_lock.release()
 
             if port_dict:
