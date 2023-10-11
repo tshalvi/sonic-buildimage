@@ -122,6 +122,7 @@ class TestChassis:
         chassis._fan_drawer_list = []
         assert chassis.get_num_fan_drawers() == 2
 
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
     def test_sfp(self):
         # Test get_num_sfps, it should not create any SFP objects
         DeviceDataManager.get_sfp_count = mock.MagicMock(return_value=3)
@@ -170,6 +171,7 @@ class TestChassis:
     @mock.patch('sonic_platform.sfp_event.sfp_event.check_sfp_status', MagicMock())
     @mock.patch('sonic_platform.sfp_event.sfp_event.__init__', MagicMock(return_value=None))
     @mock.patch('sonic_platform.sfp_event.sfp_event.initialize', MagicMock())
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
     @mock.patch('sonic_platform.device_data.DeviceDataManager.get_sfp_count', MagicMock(return_value=3))
     def test_change_event(self):
         from sonic_platform.sfp_event import sfp_event
@@ -244,12 +246,14 @@ class TestChassis:
             mock_file_content[file_path] = 0
 
     @mock.patch('sonic_platform.chassis.Chassis._wait_reboot_cause_ready', MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
     def test_reboot_cause_timeout(self):
         chassis = Chassis()
         major, minor = chassis.get_reboot_cause()
         assert major == chassis.REBOOT_CAUSE_NON_HARDWARE
         assert minor == ''
 
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
     @mock.patch('sonic_platform.utils.read_int_from_file')
     @mock.patch('sonic_platform.chassis.time.sleep', mock.MagicMock())
     def test_wait_reboot_cause_ready(self, mock_read_int):
