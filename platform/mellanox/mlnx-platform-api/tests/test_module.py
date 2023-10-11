@@ -44,13 +44,13 @@ class TestModule:
         chassis = ModularChassis()
         assert chassis.get_num_sfps() == 4
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     def test_chassis_get_all_sfps(self):
         utils.read_int_from_file = mock.MagicMock(return_value=1)
         chassis = ModularChassis()
         assert len(chassis.get_all_sfps()) == 4
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.device_data.DeviceDataManager.get_linecard_max_port_count', mock.MagicMock(return_value=16))
     def test_chassis_get_sfp(self):
         utils.read_int_from_file = mock.MagicMock(return_value=1)

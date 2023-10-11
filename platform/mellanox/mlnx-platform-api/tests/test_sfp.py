@@ -35,7 +35,7 @@ from sonic_platform.chassis import Chassis
 class TestSfp:
     @mock.patch('sonic_platform.device_data.DeviceDataManager.get_linecard_count', mock.MagicMock(return_value=8))
     @mock.patch('sonic_platform.device_data.DeviceDataManager.get_linecard_max_port_count')
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     def test_sfp_index(self, mock_max_port):
         sfp = SFP(0)
         assert sfp.is_replaceable()
@@ -57,7 +57,7 @@ class TestSfp:
 
     @mock.patch('sonic_platform.sfp.SFP.read_eeprom', mock.MagicMock(return_value=None))
     @mock.patch('sonic_platform.sfp.SFP._get_module_info')
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.chassis.Chassis.get_num_sfps', mock.MagicMock(return_value=2))
     @mock.patch('sonic_platform.chassis.extract_RJ45_ports_index', mock.MagicMock(return_value=[]))
     def test_sfp_get_error_status(self, mock_get_error_code):
@@ -89,7 +89,7 @@ class TestSfp:
 
             assert description == expected_description
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.sfp.SFP._get_page_and_page_offset')
     @mock.patch('sonic_platform.sfp.SFP._is_write_protected')
     def test_sfp_write_eeprom(self, mock_limited_eeprom, mock_get_page):
@@ -124,7 +124,7 @@ class TestSfp:
             handle.write.side_effect = OSError('')
             assert not sfp.write_eeprom(0, 1, bytearray([1]))
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.sfp.SFP._get_page_and_page_offset')
     def test_sfp_read_eeprom(self, mock_get_page):
         sfp = SFP(0)
@@ -146,7 +146,7 @@ class TestSfp:
             handle.read.side_effect = OSError('')
             assert sfp.read_eeprom(0, 1) is None
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.device_data.DeviceDataManager.platform_supports_independent_mode', mock.MagicMock(return_value=False))
     @mock.patch('sonic_platform.sfp.SFP._get_eeprom_path', mock.MagicMock(return_value = None))
     @mock.patch('sonic_platform.sfp.SFP._get_sfp_type_str')
@@ -163,7 +163,7 @@ class TestSfp:
         mock_get_type_str.return_value = 'invalid'
         assert not sfp._is_write_protected(page=0, page_offset=0, num_bytes=1)
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     def test_get_sfp_type_str(self):
         sfp = SFP(0)
         expect_sfp_types = ['cmis', 'sff8636', 'sff8472']
@@ -179,7 +179,7 @@ class TestSfp:
         os.system('rm -rf {}'.format(mock_eeprom_path))
         assert sfp._get_sfp_type_str('invalid') is None
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('os.path.exists')
     @mock.patch('sonic_platform.sfp.SFP._get_eeprom_path')
     @mock.patch('sonic_platform.sfp.SFP._get_sfp_type_str')
@@ -215,7 +215,7 @@ class TestSfp:
         assert page == '/tmp/1/data'
         assert page_offset is 0
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.sfp.SFP._read_eeprom')
     def test_sfp_get_presence(self, mock_read):
         sfp = SFP(0)
@@ -235,7 +235,7 @@ class TestSfp:
         mock_read_int.return_value = 1
         assert sfp.get_presence()
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.sfp.SFP.get_xcvr_api')
     def test_dummy_apis(self, mock_get_xcvr_api):
         mock_api = mock.MagicMock()
@@ -250,7 +250,7 @@ class TestSfp:
         assert sfp.get_rx_los() is None
         assert sfp.get_tx_fault() is None
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.utils.write_file')
     def test_reset(self, mock_write):
         sfp = SFP(0)
@@ -258,7 +258,7 @@ class TestSfp:
         assert sfp.reset()
         mock_write.assert_called_with('/sys/module/sx_core/asic0/module0/reset', '1')
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.utils.read_int_from_file')
     def test_get_lpmode(self, mock_read_int):
         sfp = SFP(0)
@@ -269,7 +269,7 @@ class TestSfp:
         mock_read_int.return_value = 2
         assert not sfp.get_lpmode()
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.utils.write_file')
     @mock.patch('sonic_platform.utils.read_int_from_file')
     def test_set_lpmode(self, mock_read_int, mock_write):
@@ -281,7 +281,7 @@ class TestSfp:
         assert sfp.set_lpmode(True)
         mock_write.assert_called_with('/sys/module/sx_core/asic0/module0/power_mode_policy', '2')
 
-    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock(return_value=False))
+    @mock.patch('sonic_platform.sfp.is_independent_module', mock.MagicMock())
     @mock.patch('sonic_platform.sfp.SFP.read_eeprom')
     def test_get_xcvr_api(self, mock_read):
         sfp = SFP(0)
