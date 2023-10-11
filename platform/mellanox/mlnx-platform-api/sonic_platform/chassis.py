@@ -126,10 +126,8 @@ class Chassis(ChassisBase):
         self._RJ45_port_inited = False
         self._RJ45_port_list = None
 
-        self.threads = []
         self.modules_mgmt_thread = threading.Thread()
         self.modules_changes_queue = queue.Queue()
-        self.modules_queue_lock = threading.Lock()
         self.modules_mgmt_task_stopping_event = threading.Event()
 
         logger.log_info("Chassis loaded successfully")
@@ -141,11 +139,6 @@ class Chassis(ChassisBase):
         if self._sfp_list:
             if self.sfp_module.SFP.shared_sdk_handle:
                 self.sfp_module.deinitialize_sdk_handle(self.sfp_module.SFP.shared_sdk_handle)
-
-        #self.modules_mgmt_task_stopping_event.set()
-        #logger.log_info('set modules_mgmt_task_stopping_event {self.modules_mgmt_task_stopping_event}')
-        #self.modules_mgmt_thread.join(timeout=10)
-        #logger.log_info('joined modules_mgmt_thread thread')
 
     @property
     def RJ45_port_list(self):
@@ -399,27 +392,23 @@ class Chassis(ChassisBase):
         if not self.modules_mgmt_thread.is_alive():
             # open new SFP change events thread
             self.modules_mgmt_thread = modules_mgmt.ModulesMgmtTask(q=self.modules_changes_queue
-                                                    , l=self.modules_queue_lock
                                                     , main_thread_stop_event = self.modules_mgmt_task_stopping_event)
             self.modules_mgmt_thread.start()
-            self.threads.append(self.modules_mgmt_thread)
         self.initialize_sfp()
+        wait_for_ever = (timeout == 0)
+        # select timeout should be no more than 1000ms to ensure fast shutdown flow
+        timeout = 1000.0 if timeout >= 1000 else float(timeout)
         port_dict = {}
         error_dict = {}
+        begin = time.time()
         i = 0
         while True:
-            logger.log_info('get_change_event() acquiring queue lock iteration {}'.format(i))
-            self.modules_queue_lock.acquire()
-            if self.modules_changes_queue.qsize() > 0:
-                if True:
-                    try:
-                        logger.log_info('get_change_event() trying to get changes from queue')
-                        port_dict = self.modules_changes_queue.get(timeout=1)
-                        logger.log_info ('get_change_event() port_dict: {}'.format(port_dict))
-                    except queue.Empty:
-                        logger.log_info("failed to get item from modules changes queue")
-            logger.log_info('get_change_event() releasing queue lock iteration {}'.format(i))
-            self.modules_queue_lock.release()
+            try:
+                logger.log_info(f'get_change_event() trying to get changes from queue on iteration {i}')
+                port_dict = self.modules_changes_queue.get(timeout=timeout)
+                logger.log_info (f'get_change_event() iteration {i} port_dict: {port_dict}')
+            except queue.Empty:
+                logger.log_info(f"failed to get item from modules changes queue on itertaion {i}")
 
             if port_dict:
                 self.reinit_sfps(port_dict)
