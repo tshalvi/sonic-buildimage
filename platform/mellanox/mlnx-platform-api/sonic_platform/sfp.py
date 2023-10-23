@@ -31,6 +31,7 @@ try:
     from . import utils
     from .device_data import DeviceDataManager
     from sonic_platform_base.sonic_xcvr.sfp_optoe_base import SfpOptoeBase
+    from swsscommon.swsscommon import SonicV2Connector
 
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
@@ -159,6 +160,18 @@ limited_eeprom = {
 # Global logger class instance
 logger = Logger()
 
+def is_independent_module(index):
+    db = SonicV2Connector(use_unix_socket_path=False)
+    db.connect(db.STATE_DB)
+
+    TRANSCEIVER_MODULES_MGMT_TABLE_NAME = 'TRANSCEIVER_MODULES_MGMT'
+    CONTROL_TYPE_KEY = "control type"
+    SW_CONTROL_CONTROL_TYPE = "SW_CONTROL"
+    table_name = TRANSCEIVER_MODULES_MGMT_TABLE_NAME + "|" + str(index)
+    result = db.get(db.STATE_DB, table_name, CONTROL_TYPE_KEY)
+
+    return result == SW_CONTROL_CONTROL_TYPE
+
 
 class NvidiaSFPCommon(SfpOptoeBase):
     def __init__(self, sfp_index):
@@ -217,6 +230,8 @@ class SFP(NvidiaSFPCommon):
         self.slot_id = slot_id
         self._sfp_type_str = None
 
+        self._is_independent_module = is_independent_module(self.sdk_index)
+
     def reinit(self):
         """
         Re-initialize this SFP object when a new SFP inserted
@@ -234,6 +249,9 @@ class SFP(NvidiaSFPCommon):
         """
         eeprom_raw = self._read_eeprom(0, 1, log_on_error=False)
         return eeprom_raw is not None
+
+    def is_independent_module(self):
+        return self._is_independent_module
 
     # read eeprom specfic bytes beginning from offset with size as num_bytes
     def read_eeprom(self, offset, num_bytes):
@@ -483,6 +501,9 @@ class SFP(NvidiaSFPCommon):
         Returns:
             bool: True if the limited bytes is hit
         """
+        if DeviceDataManager.platform_supports_independent_mode() and self.is_independent_module():
+            return False
+
         eeprom_path = self._get_eeprom_path()
         limited_data = limited_eeprom.get(self._get_sfp_type_str(eeprom_path))
         if not limited_data:
