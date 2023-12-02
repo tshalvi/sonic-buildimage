@@ -141,6 +141,7 @@ SFP_SYSFS_STATUS = 'status'
 SFP_SYSFS_STATUS_ERROR = 'statuserror'
 SFP_SYSFS_PRESENT = 'present'
 SFP_SYSFS_RESET = 'reset'
+SFP_SYSFS_HWRESET = 'hw_reset'
 SFP_SYSFS_POWER_MODE = 'power_mode'
 SFP_SYSFS_POWER_MODE_POLICY = 'power_mode_policy'
 POWER_MODE_POLICY_HIGH = 1
@@ -644,6 +645,12 @@ class SFP(NvidiaSFPCommon):
         Returns:
             The error description
         """
+        try:
+            if self.is_sw_control():
+                return 'Not supported'
+        except:
+            return self.SFP_STATUS_INITIALIZING
+
         oper_status, error_code = self._get_module_info(self.sdk_index)
         if oper_status == SX_PORT_MODULE_STATUS_INITIALIZING:
             error_description = self.SFP_STATUS_INITIALIZING
