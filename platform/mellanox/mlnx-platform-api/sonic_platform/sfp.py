@@ -403,6 +403,19 @@ class SFP(NvidiaSFPCommon):
         Returns:
             A Boolean, True if lpmode is enabled, False if disabled
         """
+
+        try:
+            if self.is_sw_control():
+                api = self.get_xcvr_api()
+                return api.get_lpmode() if api else False
+        except Exception as e:
+            print(e)
+            return False
+        '''
+        file_path = SFP_SDK_MODULE_SYSFS_ROOT_TEMPLATE.format(self.sdk_index) + SFP_SYSFS_POWER_MODE
+        power_mode = utils.read_int_from_file(file_path)
+        return power_mode == POWER_MODE_LOW
+        '''
         if utils.is_host():
             # To avoid performance issue,
             # call class level method to avoid initialize the whole sonic platform API
@@ -579,6 +592,26 @@ class SFP(NvidiaSFPCommon):
         Returns:
             A boolean, True if lpmode is set successfully, False if not
         """
+        try:
+            if self.is_sw_control():
+                api = self.get_xcvr_api()
+                if not api:
+                    return False
+                if api.get_lpmode() == lpmode:
+                    return True
+                api.set_lpmode(lpmode)
+                return api.get_lpmode() == lpmode
+        except Exception as e:
+            print(e)
+            return False
+        '''
+        print('\nNotice: please set port admin status to down before setting power mode, ignore this message if already set')
+        file_path = SFP_SDK_MODULE_SYSFS_ROOT_TEMPLATE.format(self.sdk_index) + SFP_SYSFS_POWER_MODE_POLICY
+        target_admin_mode = POWER_MODE_POLICY_AUTO if lpmode else POWER_MODE_POLICY_HIGH
+        current_admin_mode = utils.read_int_from_file(file_path)
+        if current_admin_mode == target_admin_mode:
+            return True
+        '''
         if utils.is_host():
             # To avoid performance issue,
             # call class level method to avoid initialize the whole sonic platform API
@@ -597,6 +630,7 @@ class SFP(NvidiaSFPCommon):
                 return False
         else:
             return self._set_lpmode(lpmode, self.sdk_handle, self.sdk_index, self.slot_id)
+
 
 
     @classmethod
@@ -882,14 +916,10 @@ class SFP(NvidiaSFPCommon):
 
         db = utils.DbUtils.get_db_instance('STATE_DB')
         control_type = db.get('STATE_DB', f'TRANSCEIVER_MODULES_MGMT|{self.sdk_index}', 'control_type')
-        control_file_value = utils.read_int_from_file(f'/sys/module/sx_core/asic0/module{self.sdk_index}/control')
-
-        if control_type == 'SW_CONTROL' and control_file_value == 1:
-            return True
-        elif control_type == 'FW_CONTROL' and control_file_value == 0:
-            return False
-        else:
+        if not control_type:
             raise Exception(f'Module {self.sdk_index} is in initialization, please retry later')
+
+        return control_type == 'SW_CONTROL'
 
 
 class RJ45Port(NvidiaSFPCommon):
