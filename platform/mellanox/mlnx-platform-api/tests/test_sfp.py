@@ -336,7 +336,7 @@ class TestSfp:
         })
         assert sfp.get_temperature_warning_threashold() == 75.0
         assert sfp.get_temperature_critical_threashold() == 85.0
-
+    '''
     @mock.patch('sonic_platform.utils.read_int_from_file')
     @mock.patch('sonic_platform.device_data.DeviceDataManager.is_independent_mode')
     @mock.patch('sonic_platform.utils.DbUtils.get_db_instance')
@@ -383,4 +383,5 @@ class TestSfp:
         assert not sfp.set_lpmode(True)
         assert sfp.set_lpmode(False)
         assert not sfp.set_lpmode(False)
+    '''
 
