@@ -18,6 +18,7 @@
 from . import utils
 from sonic_py_common import logger
 
+import os
 import sys
 import time
 
@@ -56,7 +57,7 @@ class ThermalUpdater:
     def load_tc_config(self):
         asic_poll_interval = 1
         sfp_poll_interval = 10
-        data = utils.load_json_file(TC_CONFIG_FILE)
+        data = utils.load_json_file(TC_CONFIG_FILE, log_func=None)
         if not data:
             logger.log_notice(f'{TC_CONFIG_FILE} does not exist, use default polling interval')
 
@@ -108,7 +109,7 @@ class ThermalUpdater:
 
     def wait_all_sfp_ready(self):
         logger.log_notice('Waiting for all SFP modules ready...')
-        max_wait_time = 60
+        max_wait_time = 300
         ready_set = set()
         while len(ready_set) != len(self._sfp_list):
             for sfp in self._sfp_list:
@@ -151,16 +152,16 @@ class ThermalUpdater:
                     warning_thresh = sfp.get_temperature_warning_threashold()
                     critical_thresh = sfp.get_temperature_critical_threashold()
                     fault = ERROR_READ_THERMAL_DATA if (temperature is None or warning_thresh is None or critical_thresh is None) else 0
-                    temperature = 0 if temperature is None else int(temperature * SFP_TEMPERATURE_SCALE)
-                    warning_thresh = 0 if warning_thresh is None else int(warning_thresh * SFP_TEMPERATURE_SCALE)
-                    critical_thresh = 0 if critical_thresh is None else int(critical_thresh * SFP_TEMPERATURE_SCALE)
+                    temperature = 0 if temperature is None else temperature * SFP_TEMPERATURE_SCALE
+                    warning_thresh = 0 if warning_thresh is None else warning_thresh * SFP_TEMPERATURE_SCALE
+                    critical_thresh = 0 if critical_thresh is None else critical_thresh * SFP_TEMPERATURE_SCALE
 
                 hw_management_independent_mode_update.thermal_data_set_module(
                     0, # ASIC index always 0 for now
                     sfp.sdk_index + 1,
-                    temperature,
-                    critical_thresh,
-                    warning_thresh,
+                    int(temperature),
+                    int(critical_thresh),
+                    int(warning_thresh),
                     fault
                 )
             else:
