@@ -28,6 +28,7 @@ try:
     from .device_data import DeviceDataManager
     from sonic_platform_base.sonic_xcvr.fields import consts
     from sonic_platform_base.sonic_xcvr.api.public import cmis
+    from sonic_platform_base.sonic_xcvr.api.public import sff8636
     from . import sfp as sfp_module
     from . import utils
     from swsscommon.swsscommon import SonicV2Connector
@@ -501,14 +502,14 @@ class ModulesMgmtTask(threading.Thread):
             return STATE_SW_CONTROL
 
         else:
-            # QSFP-DD, OSFP, QSFP+C, QSFP+, QSFP28 - only these 5 are supported currently as independent module - SW controlled
+            # QSFP-DD, OSFP, QSFP+C, QSFP+, QSFP28 - only these 5 active SFF's are supported currently as independent module - SW controlled
             if isinstance(xcvr_api, cmis.CmisApi) or isinstance(xcvr_api, sff8636.Sff8636Api):
                 power_cap = self.check_power_cap(port, module_sm_obj)
                 if power_cap is STATE_POWER_LIMIT_ERROR:
                     module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
                     return STATE_POWER_LIMIT_ERROR
                 self.update_frequency(port, xcvr_api)
-                logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to supported page_mem device".format(xcvr_api, port))
+                logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to supported paged_mem device".format(xcvr_api, port))
                 return STATE_SW_CONTROL
             else:
                 return STATE_FW_CONTROL
@@ -518,9 +519,8 @@ class ModulesMgmtTask(threading.Thread):
         sfp = sfp_module.SFP(port)
         xcvr_api = sfp.get_xcvr_api()
         if isinstance(xcvr_api, cmis.CmisApi):
-            field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)  # working, TODO: uncomment
-        else:
-            if isinstance(xcvr_api, sff8636.Sff8636Api):
+            field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)
+        elif isinstance(xcvr_api, sff8636.Sff8636Api):
                 field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.POWER_CLASS_FIELD)
         powercap_ba = xcvr_api.xcvr_eeprom.reader(field.get_offset(), field.get_size())
         logger.log_info("check_power_cap got powercap bytearray {} for port {} module_sm_obj {}".format(powercap_ba, port, module_sm_obj))
