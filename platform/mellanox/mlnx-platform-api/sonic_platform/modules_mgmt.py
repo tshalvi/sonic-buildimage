@@ -458,6 +458,25 @@ class ModulesMgmtTask(threading.Thread):
                 return STATE_HW_NOT_PRESENT
         return STATE_NOT_POWERED
 
+    def update_frequency(self, port, xcvr_api):
+        # first read the frequency support - if it's 1 then continue, if it's 0 no need to do anything
+        module_fd_freq_support_path = SYSFS_INDEPENDENT_FD_FREQ_SUPPORT.format(port)
+        val_int = utils.read_int_from_file(module_fd_freq_support_path)
+        if 1 == val_int:
+            # read the module maximum supported clock of Management Comm Interface (MCI) from module EEPROM.
+            # from byte 2 bits 3-2:
+            # 00b means module supports up to 400KHz
+            # 01b means module supports up to 1MHz
+            logger.log_info(f"check_module_type reading mci max frequency for port {port}")
+            read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
+            logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
+            mci_bits = read_mci & 0b00001100
+            logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
+            # Then, set it to frequency Sysfs using:
+            # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
+            indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
+            utils.write_file(indep_fd_freq, mci_bits)
+
     def check_module_type(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_module_type port {} module_sm_obj {}".format(port, module_sm_obj))
         sfp = sfp_module.SFP(port)
@@ -469,47 +488,39 @@ class ModulesMgmtTask(threading.Thread):
             logger.log_info("check_module_type setting as FW control as xcvr_api is empty for port {} module_sm_obj {}"
                             .format(port, module_sm_obj))
             return STATE_FW_CONTROL
-        # QSFP-DD ID is 24, OSFP ID is 25 - only these 2 are supported currently as independent module - SW controlled
-        if not isinstance(xcvr_api, cmis.CmisApi):
-            logger.log_info("check_module_type setting STATE_FW_CONTROL for {} in check_module_type port {} module_sm_obj {}"
-                            .format(xcvr_api, port, module_sm_obj))
-            return STATE_FW_CONTROL
-        else:
-            if xcvr_api.is_flat_memory():
-                logger.log_info("check_module_type port {} setting STATE_FW_CONTROL module ID {} due to flat_mem device"
-                              .format(xcvr_api, port))
-                return STATE_FW_CONTROL
+
+        if xcvr_api.is_flat_memory():
             logger.log_info("check_module_type checking power cap for {} in check_module_type port {} module_sm_obj {}"
                                .format(xcvr_api, port, module_sm_obj))
             power_cap = self.check_power_cap(port, module_sm_obj)
             if power_cap is STATE_POWER_LIMIT_ERROR:
                 module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
                 return STATE_POWER_LIMIT_ERROR
-            else:
-                # first read the frequency support - if it's 1 then continue, if it's 0 no need to do anything
-                module_fd_freq_support_path = SYSFS_INDEPENDENT_FD_FREQ_SUPPORT.format(port)
-                val_int = utils.read_int_from_file(module_fd_freq_support_path)
-                if 1 == val_int:
-                    # read the module maximum supported clock of Management Comm Interface (MCI) from module EEPROM.
-                    # from byte 2 bits 3-2:
-                    # 00b means module supports up to 400KHz
-                    # 01b means module supports up to 1MHz
-                    logger.log_info(f"check_module_type reading mci max frequency for port {port}")
-                    read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
-                    logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
-                    mci_bits = read_mci & 0b00001100
-                    logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
-                    # Then, set it to frequency Sysfs using:
-                    # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
-                    indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
-                    utils.write_file(indep_fd_freq, mci_bits)
+            self.update_frequency(port, xcvr_api)
+            logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to flat_mem device".format(xcvr_api, port))
+            return STATE_SW_CONTROL
+
+        else:
+            if isinstance(xcvr_api, cmis.CmisApi) or isinstance(xcvr_api, sff8636.Sff8636Api):
+                power_cap = self.check_power_cap(port, module_sm_obj)
+                if power_cap is STATE_POWER_LIMIT_ERROR:
+                    module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
+                    return STATE_POWER_LIMIT_ERROR
+                self.update_frequency(port, xcvr_api)
+                logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to supported page_mem device".format(xcvr_api, port))
                 return STATE_SW_CONTROL
+            else:
+                return STATE_FW_CONTROL
 
     def check_power_cap(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_power_cap port {} module_sm_obj {}".format(port, module_sm_obj))
         sfp = sfp_module.SFP(port)
         xcvr_api = sfp.get_xcvr_api()
-        field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)
+        if isinstance(xcvr_api, cmis.CmisApi):
+            field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)  # working, TODO: uncomment
+        else:
+            if isinstance(xcvr_api, sff8636.Sff8636Api):
+                field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.POWER_CLASS_FIELD)
         powercap_ba = xcvr_api.xcvr_eeprom.reader(field.get_offset(), field.get_size())
         logger.log_info("check_power_cap got powercap bytearray {} for port {} module_sm_obj {}".format(powercap_ba, port, module_sm_obj))
         powercap = int.from_bytes(powercap_ba, "big")
