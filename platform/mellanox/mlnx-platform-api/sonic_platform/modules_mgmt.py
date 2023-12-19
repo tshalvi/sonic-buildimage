@@ -501,6 +501,7 @@ class ModulesMgmtTask(threading.Thread):
             return STATE_SW_CONTROL
 
         else:
+            # QSFP-DD, OSFP, QSFP+C, QSFP+, QSFP28 - only these 5 are supported currently as independent module - SW controlled
             if isinstance(xcvr_api, cmis.CmisApi) or isinstance(xcvr_api, sff8636.Sff8636Api):
                 power_cap = self.check_power_cap(port, module_sm_obj)
                 if power_cap is STATE_POWER_LIMIT_ERROR:
