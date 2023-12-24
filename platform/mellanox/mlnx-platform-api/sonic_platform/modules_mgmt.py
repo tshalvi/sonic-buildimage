@@ -28,6 +28,7 @@ try:
     from .device_data import DeviceDataManager
     from sonic_platform_base.sonic_xcvr.fields import consts
     from sonic_platform_base.sonic_xcvr.api.public import cmis
+    from sonic_platform_base.sonic_xcvr.api.public import sff8636
     from . import sfp as sfp_module
     from . import utils
     from swsscommon.swsscommon import SonicV2Connector
@@ -67,6 +68,8 @@ SYSFS_INDEPENDENT_FD_FREQ = os.path.join(SYSFS_INDEPENDENT_FD_PREFIX, "frequency
 SYSFS_INDEPENDENT_FD_FREQ_SUPPORT = os.path.join(SYSFS_INDEPENDENT_FD_PREFIX, "frequency_support")
 IS_INDEPENDENT_MODULE = 'is_independent_module'
 
+STATE_DB_TABLE_NAME_PREFIX = 'TRANSCEIVER_MODULES_MGMT|{}'
+
 MAX_EEPROM_ERROR_RESET_RETRIES = 4
 
 class ModulesMgmtTask(threading.Thread):
@@ -90,7 +93,7 @@ class ModulesMgmtTask(threading.Thread):
         self.fds_mapping_to_obj = {}
         self.port_to_fds = {}
         self.fds_events_count_dict = {}
-        self.delete_ports_and_reset_states_dict = {}
+        self.delete_ports_from_state_db_dict = {}
         self.setName("ModulesMgmtTask")
         self.register_hw_present_fds = []
 
@@ -232,7 +235,7 @@ class ModulesMgmtTask(threading.Thread):
                         self.modules_lock_list[port_num].release()
 
             if is_final_state_module:
-                self.map_ports_final_state()
+                self.add_ports_state_to_state_db()
                 self.delete_ports_from_dict()
                 self.send_changes_to_shared_queue()
                 self.register_presece_closed_ports(False, self.register_hw_present_fds)
@@ -296,15 +299,16 @@ class ModulesMgmtTask(threading.Thread):
                         self.deregister_fd_from_polling(module_obj.port_num)
                         # put again module obj in sfp_port_dict so next loop will work on it
                         self.sfp_port_dict[module_obj.port_num] = module_obj
-                        self.delete_ports_and_reset_states_dict[module_obj.port_num] = val
+                        self.delete_ports_from_state_db_dict[module_obj.port_num] = val
                 except Exception as e:
                     logger.log_error("dynamic detection exception on read presence {} for port {} fd name {} traceback:\n{}"
                                     .format(e, module_obj.port_num, module_fd.name, traceback.format_exc()))
-            for port, val in self.delete_ports_and_reset_states_dict.items():
+            for port, val in self.delete_ports_from_state_db_dict.items():
                 logger.log_info(f"dynamic detection resetting all states for port {port} close_presence_ports {val}")
                 module_obj = self.sfp_port_dict[port]
                 module_obj.reset_all_states(close_presence_ports=val)
-            self.delete_ports_and_reset_states_dict = {}
+            self.delete_ports_state_from_state_db(self.delete_ports_from_state_db_dict.keys())
+            self.delete_ports_from_state_db_dict = {}
             for port_num, module_sm_obj in self.sfp_port_dict.items():
                 curr_state = module_sm_obj.get_current_state()
                 logger.log_info(f'dynamic detection STATE_LOG {port_num}: curr_state is {curr_state}')
@@ -347,7 +351,7 @@ class ModulesMgmtTask(threading.Thread):
                         self.modules_lock_list[port_num].release()
 
             if is_final_state_module:
-                self.map_ports_final_state(dynamic=True)
+                self.add_ports_state_to_state_db(dynamic=True)
                 self.delete_ports_from_dict(dynamic=True)
                 self.send_changes_to_shared_queue(dynamic=True)
                 self.register_presece_closed_ports(True, self.register_hw_present_fds)
@@ -458,6 +462,25 @@ class ModulesMgmtTask(threading.Thread):
                 return STATE_HW_NOT_PRESENT
         return STATE_NOT_POWERED
 
+    def update_frequency(self, port, xcvr_api):
+        # first read the frequency support - if it's 1 then continue, if it's 0 no need to do anything
+        module_fd_freq_support_path = SYSFS_INDEPENDENT_FD_FREQ_SUPPORT.format(port)
+        val_int = utils.read_int_from_file(module_fd_freq_support_path)
+        if 1 == val_int:
+            # read the module maximum supported clock of Management Comm Interface (MCI) from module EEPROM.
+            # from byte 2 bits 3-2:
+            # 00b means module supports up to 400KHz
+            # 01b means module supports up to 1MHz
+            logger.log_info(f"check_module_type reading mci max frequency for port {port}")
+            read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
+            logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
+            mci_bits = read_mci & 0b00001100
+            logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
+            # Then, set it to frequency Sysfs using:
+            # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
+            indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
+            utils.write_file(indep_fd_freq, mci_bits)
+
     def check_module_type(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_module_type port {} module_sm_obj {}".format(port, module_sm_obj))
         sfp = sfp_module.SFP(port)
@@ -469,47 +492,38 @@ class ModulesMgmtTask(threading.Thread):
             logger.log_info("check_module_type setting as FW control as xcvr_api is empty for port {} module_sm_obj {}"
                             .format(port, module_sm_obj))
             return STATE_FW_CONTROL
-        # QSFP-DD ID is 24, OSFP ID is 25 - only these 2 are supported currently as independent module - SW controlled
-        if not isinstance(xcvr_api, cmis.CmisApi):
-            logger.log_info("check_module_type setting STATE_FW_CONTROL for {} in check_module_type port {} module_sm_obj {}"
-                            .format(xcvr_api, port, module_sm_obj))
-            return STATE_FW_CONTROL
-        else:
-            if xcvr_api.is_flat_memory():
-                logger.log_info("check_module_type port {} setting STATE_FW_CONTROL module ID {} due to flat_mem device"
-                              .format(xcvr_api, port))
-                return STATE_FW_CONTROL
+
+        if xcvr_api.is_flat_memory():
             logger.log_info("check_module_type checking power cap for {} in check_module_type port {} module_sm_obj {}"
                                .format(xcvr_api, port, module_sm_obj))
             power_cap = self.check_power_cap(port, module_sm_obj)
             if power_cap is STATE_POWER_LIMIT_ERROR:
                 module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
                 return STATE_POWER_LIMIT_ERROR
-            else:
-                # first read the frequency support - if it's 1 then continue, if it's 0 no need to do anything
-                module_fd_freq_support_path = SYSFS_INDEPENDENT_FD_FREQ_SUPPORT.format(port)
-                val_int = utils.read_int_from_file(module_fd_freq_support_path)
-                if 1 == val_int:
-                    # read the module maximum supported clock of Management Comm Interface (MCI) from module EEPROM.
-                    # from byte 2 bits 3-2:
-                    # 00b means module supports up to 400KHz
-                    # 01b means module supports up to 1MHz
-                    logger.log_info(f"check_module_type reading mci max frequency for port {port}")
-                    read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
-                    logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
-                    mci_bits = read_mci & 0b00001100
-                    logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
-                    # Then, set it to frequency Sysfs using:
-                    # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
-                    indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
-                    utils.write_file(indep_fd_freq, mci_bits)
+            self.update_frequency(port, xcvr_api)
+            logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to flat_mem device".format(xcvr_api, port))
+            return STATE_SW_CONTROL
+
+        else:
+            if isinstance(xcvr_api, cmis.CmisApi) or isinstance(xcvr_api, sff8636.Sff8636Api):
+                power_cap = self.check_power_cap(port, module_sm_obj)
+                if power_cap is STATE_POWER_LIMIT_ERROR:
+                    module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
+                    return STATE_POWER_LIMIT_ERROR
+                self.update_frequency(port, xcvr_api)
+                logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to supported page_mem device".format(xcvr_api, port))
                 return STATE_SW_CONTROL
+            else:
+                return STATE_FW_CONTROL
 
     def check_power_cap(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_power_cap port {} module_sm_obj {}".format(port, module_sm_obj))
         sfp = sfp_module.SFP(port)
         xcvr_api = sfp.get_xcvr_api()
-        field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)
+        if isinstance(xcvr_api, cmis.CmisApi):
+            field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.MAX_POWER_FIELD)
+        elif isinstance(xcvr_api, sff8636.Sff8636Api):
+            field = xcvr_api.xcvr_eeprom.mem_map.get_field(consts.POWER_CLASS_FIELD)
         powercap_ba = xcvr_api.xcvr_eeprom.reader(field.get_offset(), field.get_size())
         logger.log_info("check_power_cap got powercap bytearray {} for port {} module_sm_obj {}".format(powercap_ba, port, module_sm_obj))
         powercap = int.from_bytes(powercap_ba, "big")
@@ -621,21 +635,59 @@ class ModulesMgmtTask(threading.Thread):
         self.waiting_modules_list.add(module_sm_obj.port_num)
         logger.log_info("add_port_to_wait_reset waiting_list after adding: {}".format(self.waiting_modules_list))
 
-    def map_ports_final_state(self, dynamic=False):
+    def add_ports_state_to_state_db(self, dynamic=False):
+        state_db = None
         detection_method = 'dynamic' if dynamic else 'static'
-        logger.log_info(f"{detection_method} detection enter map_ports_final_state")
+        logger.log_info(f"{detection_method} detection enter add_ports_state_to_state_db")
         for port, module_obj in self.sfp_port_dict.items():
             final_state = module_obj.get_final_state()
             if final_state:
                 # add port to delete list that we will iterate on later and delete the ports from sfp_port_dict
                 self.sfp_delete_list_from_port_dict.append(port)
                 if final_state in [STATE_HW_NOT_PRESENT, STATE_POWER_LIMIT_ERROR, STATE_ERROR_HANDLER]:
-                    port_status = '0'
+                    ctrl_type_db_value = '0'
                     logger.log_info(f"{detection_method} detection adding port {port} to register_hw_present_fds")
                     self.register_hw_present_fds.append(module_obj)
                 else:
-                    port_status = '1'
-                self.sfp_changes_dict[str(module_obj.port_num + 1)] = port_status
+                    ctrl_type_db_value = '1'
+                self.sfp_changes_dict[str(module_obj.port_num + 1)] = ctrl_type_db_value
+                if final_state in [STATE_SW_CONTROL, STATE_FW_CONTROL]:
+                    namespaces = multi_asic.get_front_end_namespaces()
+                    for namespace in namespaces:
+                        logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                        state_db = SonicV2Connector(use_unix_socket_path=False, namespace=namespace)
+                        logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                        logger.log_info(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
+                        if state_db is not None:
+                            logger.log_info(
+                                f"{detection_method} detection connecting to state_db for port {port} namespace {namespace}")
+                            state_db.connect(state_db.STATE_DB)
+                            if final_state in [STATE_FW_CONTROL]:
+                                control_type = 'FW_CONTROL'
+                            elif final_state in [STATE_SW_CONTROL]:
+                                control_type = 'SW_CONTROL'
+                            table_name = STATE_DB_TABLE_NAME_PREFIX.format(port)
+                            logger.log_info(f"{detection_method} detection setting state_db table {table_name} for port {port}"
+                                               f" namespace {namespace} control_type {control_type}")
+                            state_db.set(state_db.STATE_DB, table_name, "control_type", control_type)
+
+    def delete_ports_state_from_state_db(self, ports, dynamic=True):
+        state_db = None
+        detection_method = 'dynamic' if dynamic else 'static'
+        for port in ports:
+            namespaces = multi_asic.get_front_end_namespaces()
+            for namespace in namespaces:
+                logger.log_info(f"{detection_method} detection getting state_db for port {port} namespace {namespace}")
+                state_db = SonicV2Connector(use_unix_socket_path=False, namespace=namespace)
+                logger.log_info(f"{detection_method} detection got state_db for port {port} namespace {namespace}")
+                if state_db is not None:
+                    logger.log_info(
+                        f"{detection_method} detection connecting to state_db for port {port} namespace {namespace}")
+                    state_db.connect(state_db.STATE_DB)
+                    table_name = STATE_DB_TABLE_NAME_PREFIX.format(port)
+                    logger.log_info(f"{detection_method} detection deleting state_db table {table_name} "
+                                       f"for port {port} namespace {namespace}")
+                    state_db.delete(state_db.STATE_DB, table_name)
 
     def delete_ports_from_dict(self, dynamic=False):
         detection_method = 'dynamic' if dynamic else 'static'
@@ -741,3 +793,4 @@ class ModuleStateMachine(object):
             self.module_fd.close()
         if self.module_power_good_fd:
             self.module_power_good_fd.close()
+
