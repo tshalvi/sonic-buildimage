@@ -780,4 +780,3 @@ class ModuleStateMachine(object):
         if self.module_power_good_fd:
             self.module_power_good_fd.close()
 
-
