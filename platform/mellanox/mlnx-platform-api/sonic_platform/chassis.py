@@ -24,11 +24,11 @@
 
 try:
     from sonic_platform_base.chassis_base import ChassisBase
-    from sonic_py_common.logger import Logger
     import os
     from functools import reduce
     from .utils import extract_RJ45_ports_index
     from . import utils
+    from .logger import logger
     from .device_data import DeviceDataManager
     import re
     import queue
@@ -70,8 +70,6 @@ REBOOT_TYPE_KEXEC_FILE = "/proc/cmdline"
 REBOOT_TYPE_KEXEC_PATTERN_WARM = ".*SONIC_BOOT_TYPE=(warm|fastfast).*"
 REBOOT_TYPE_KEXEC_PATTERN_FAST = ".*SONIC_BOOT_TYPE=(fast|fast-reboot).*"
 
-# Global logger class instance
-logger = Logger()
 
 class Chassis(ChassisBase):
     """Platform-specific Chassis class"""

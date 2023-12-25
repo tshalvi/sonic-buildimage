@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020-2021 NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2020-2023 NVIDIA CORPORATION & AFFILIATES.
 # Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,9 @@
 import os
 import time
 
-from sonic_py_common.logger import Logger
+from .logger import logger
 from . import utils
 from . import device_data
-
-logger = Logger()
 
 
 class Led(object):

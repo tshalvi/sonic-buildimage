@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2022 NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2019-2023 NVIDIA CORPORATION & AFFILIATES.
 # Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@ import time
 import select
 
 from .device_data import DeviceDataManager
+from .logger import logger
 try:
     if 'PLATFORM_API_UNIT_TESTING' not in os.environ:
         from python_sdk_api.sx_api import *
@@ -126,7 +127,6 @@ SDK_DAEMON_READY_FILE = '/tmp/sdk_ready'
 
 PMPE_PACKET_SIZE = 2000
 
-logger = Logger()
 
 class sfp_event:
     ''' Listen to plugin/plugout cable events '''

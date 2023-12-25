@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES.
 # Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +22,8 @@ from sonic_py_common.logger import Logger
 
 from . import utils
 from .device_data import DeviceDataManager
+from .logger import logger
 from .vpd_parser import VpdParser
-
-# Global logger class instance
-logger = Logger()
 
 
 class Module(ModuleBase):

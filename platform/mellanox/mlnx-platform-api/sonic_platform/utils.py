@@ -24,15 +24,13 @@ import threading
 import time
 import os
 from sonic_py_common import device_info
-from sonic_py_common.logger import Logger
+from .logger import logger
 
 HWSKU_JSON = 'hwsku.json'
 
 PORT_INDEX_KEY = "index"
 PORT_TYPE_KEY = "port_type"
 RJ45_PORT_TYPE = "RJ45"
-
-logger = Logger()
 
 
 def read_from_file(file_path, target_type, default='', raise_exception=False, log_func=logger.log_error):

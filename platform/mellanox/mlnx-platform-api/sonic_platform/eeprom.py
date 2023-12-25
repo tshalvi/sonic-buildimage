@@ -24,7 +24,7 @@
 import os
 import subprocess
 
-from sonic_py_common.logger import Logger
+from .logger import logger
 try:
     from sonic_platform_base.sonic_eeprom import eeprom_tlvinfo
 except ImportError as e:
@@ -32,8 +32,6 @@ except ImportError as e:
 
 from .device_data import DeviceDataManager
 from .utils import default_return, is_host, wait_until
-
-logger = Logger()
 
 #
 # this is mlnx-specific

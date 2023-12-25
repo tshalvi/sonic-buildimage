@@ -29,12 +29,10 @@ try:
     import os
 
     from .device_data import DeviceDataManager
+    from .logger import logger
     from . import utils
 except ImportError as e:
     raise ImportError(str(e) + "- required module not found")
-
-# Global logger class instance
-logger = Logger()
 
 DEFAULT_TEMP_SCALE = 1000
 

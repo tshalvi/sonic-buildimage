@@ -27,16 +27,13 @@ import subprocess
 
 try:
     from sonic_platform_base.fan_base import FanBase
-    from sonic_py_common.logger import Logger
     from .led import ComponentFaultyIndicator
+    from .logger import logger
     from . import utils
     from .thermal import Thermal
     from .fan_drawer import VirtualDrawer
 except ImportError as e:
     raise ImportError (str(e) + "- required module not found")
-
-# Global logger class instance
-logger = Logger()
 
 PWM_MAX = 255
 
