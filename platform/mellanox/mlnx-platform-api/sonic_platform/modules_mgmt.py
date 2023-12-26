@@ -473,7 +473,7 @@ class ModulesMgmtTask(threading.Thread):
             # 01b means module supports up to 1MHz
             logger.log_debug(f"check_module_type reading mci max frequency for port {port}")
             read_mci = xcvr_api.xcvr_eeprom.read_raw(2, 1)
-            logger.log_info(f"check_module_type read mci max frequency {read_mci} for port {port}")
+            logger.log_debug(f"check_module_type read mci max frequency {read_mci} for port {port}")
             mci_bits = read_mci & 0b00001100
             logger.log_info(f"check_module_type read mci max frequency bits {mci_bits} for port {port}")
             # Then, set it to frequency Sysfs using:
