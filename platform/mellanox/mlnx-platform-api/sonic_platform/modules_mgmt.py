@@ -496,8 +496,14 @@ class ModulesMgmtTask(threading.Thread):
                 return STATE_HW_NOT_PRESENT
         return STATE_NOT_POWERED
 
+    def is_cmis_api(self, xcvr_api):
+        return isinstance(xcvr_api, cmis.CmisApi)
+
+    def is_sff_api(self, xcvr_api):
+        return isinstance(xcvr_api, sff8636.Sff8636Api) or isinstance(xcvr_api, sff8436.Sff8436Api)
+
     def is_supported_for_software_control(self, xcvr_api):
-        return isinstance(xcvr_api, cmis.CmisApi) or isinstance(xcvr_api, sff8636.Sff8636Api) or isinstance(xcvr_api, sff8436.Sff8436Api)
+        return self.is_cmis_api(xcvr_api) or self.is_sff_api(xcvr_api)
 
     def update_frequency(self, port, xcvr_api):
         # first read the frequency support - if it's 1 then continue, if it's 0 no need to do anything
@@ -512,15 +518,15 @@ class ModulesMgmtTask(threading.Thread):
                 logger.log_debug(f"check_module_type reading mci max frequency for port {port}")
                 read_mci = xcvr_api.xcvr_eeprom.read_raw(CMIS_MCI_EEPROM_OFFSET, 1)
                 logger.log_debug(f"check_module_type read mci max frequency {read_mci} for port {port}")
-                frequency_bits = read_mci & CMIS_MCI_MASK
+                frequency = read_mci & CMIS_MCI_MASK
             elif isinstance(xcvr_api, sff8636.Sff8636Api) or isinstance(xcvr_api, sff8436.Sff8436Api):
                 # for SFF modules, frequency is always 400KHz
-                frequency_bits = 0b00
-            logger.log_info(f"check_module_type read mci max frequency bits {frequency_bits} for port {port}")
+                frequency = 0
+            logger.log_info(f"check_module_type read mci max frequency bits {frequency} for port {port}")
             # Then, set it to frequency Sysfs using:
             # echo <val> > /sys/module/sx_core/$asic/$module/frequency //  val: 0 - up to 400KHz, 1 - up to 1MHz
             indep_fd_freq = SYSFS_INDEPENDENT_FD_FREQ.format(port)
-            utils.write_file(indep_fd_freq, frequency_bits)
+            utils.write_file(indep_fd_freq, frequency)
 
     def check_module_type(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_module_type port {} module_sm_obj {}".format(port, module_sm_obj))
@@ -540,7 +546,7 @@ class ModulesMgmtTask(threading.Thread):
             logger.log_info("check_module_type checking power cap for {} in check_module_type port {} module_sm_obj {}"
                                .format(xcvr_api, port, module_sm_obj))
             power_cap = self.check_power_cap(port, module_sm_obj)
-            if powercap is STATE_ERROR_HANDLER:
+            if power_cap is STATE_ERROR_HANDLER:
                 module_sm_obj.set_final_state(STATE_ERROR_HANDLER)
                 return STATE_ERROR_HANDLER
             if power_cap is STATE_POWER_LIMIT_ERROR:
@@ -553,13 +559,15 @@ class ModulesMgmtTask(threading.Thread):
             # QSFP-DD, OSFP, QSFP+C, QSFP+, QSFP28 - only these 5 active form factors are supported currently as independent module - SW controlled
             if self.is_supported_for_software_control(xcvr_api):
                 power_cap = self.check_power_cap(port, module_sm_obj)
-                if powercap is STATE_ERROR_HANDLER:
+                if power_cap is STATE_ERROR_HANDLER:
                     module_sm_obj.set_final_state(STATE_ERROR_HANDLER)
                     return STATE_ERROR_HANDLER
                 if power_cap is STATE_POWER_LIMIT_ERROR:
                     module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
                     return STATE_POWER_LIMIT_ERROR
                 self.update_frequency(port, xcvr_api)
+                if self.is_sff_api(xcvr_api) and xcvr_api.get_tx_disable_support():
+                    xcvr_api.tx_disable(True)
                 logger.log_info("check_module_type port {} setting STATE_SW_CONTROL module ID {} due to supported paged_mem device".format(xcvr_api, port))
                 return STATE_SW_CONTROL
             else:
@@ -612,7 +620,7 @@ class ModulesMgmtTask(threading.Thread):
         indep_fd_power_limit = self.get_sysfs_ethernet_port_fd(SYSFS_INDEPENDENT_FD_POWER_LIMIT, port)
         cage_power_limit = utils.read_int_from_file(indep_fd_power_limit)
         logger.log_info("check_power_cap got cage_power_limit {} for port {} module_sm_obj {}".format(cage_power_limit, port, module_sm_obj))
-        if powercap > int(cage_power_limit):
+        if powercap > int(cage_power_limit) * 4:  # Multiplying the sysfs value (0.25 Watt units) by 4 aligns it with the EEPROM max power value (1 Watt units), ensuring both are in the same unit for a meaningful comparison
             logger.log_info("check_power_cap powercap {} != cage_power_limit {} for port {} module_sm_obj {}".format(powercap, cage_power_limit, port, module_sm_obj))
             module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
             return STATE_POWER_LIMIT_ERROR
@@ -836,4 +844,3 @@ class ModuleStateMachine(object):
             self.module_fd.close()
         if self.module_power_good_fd:
             self.module_power_good_fd.close()
-
