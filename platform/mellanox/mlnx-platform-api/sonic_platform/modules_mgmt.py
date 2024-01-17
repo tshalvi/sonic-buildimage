@@ -510,7 +510,7 @@ class ModulesMgmtTask(threading.Thread):
         module_fd_freq_support_path = SYSFS_INDEPENDENT_FD_FREQ_SUPPORT.format(port)
         val_int = utils.read_int_from_file(module_fd_freq_support_path)
         if 1 == val_int:
-            if isinstance(xcvr_api, cmis.CmisApi):
+            if is_cmis_api(xcvr_api):
                 # for CMIS modules, read the module maximum supported clock of Management Comm Interface (MCI) from module EEPROM.
                 # from byte 2 bits 3-2:
                 # 00b means module supports up to 400KHz
@@ -518,8 +518,8 @@ class ModulesMgmtTask(threading.Thread):
                 logger.log_debug(f"check_module_type reading mci max frequency for port {port}")
                 read_mci = xcvr_api.xcvr_eeprom.read_raw(CMIS_MCI_EEPROM_OFFSET, 1)
                 logger.log_debug(f"check_module_type read mci max frequency {read_mci} for port {port}")
-                frequency = read_mci & CMIS_MCI_MASK
-            elif isinstance(xcvr_api, sff8636.Sff8636Api) or isinstance(xcvr_api, sff8436.Sff8436Api):
+                frequency = (read_mci & CMIS_MCI_MASK) >> 2
+            elif is_sff_api(xcvr_api):
                 # for SFF modules, frequency is always 400KHz
                 frequency = 0
             logger.log_info(f"check_module_type read mci max frequency bits {frequency} for port {port}")
