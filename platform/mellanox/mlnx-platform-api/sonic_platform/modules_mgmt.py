@@ -606,7 +606,7 @@ class ModulesMgmtTask(threading.Thread):
             if power_class_bits[5] == 1:
                 read_power_class_8_byte = xcvr_api.xcvr_eeprom.read_raw(107, 1)
                 powercap = max(read_power_class_8_byte, powercap)
-            return powercap
+            return powercap * 4 # Multiplying this value by 4 will convert it to units of 0.25W, instead of 1W, allowing for meaningful comparisons later in this flow
 
     def check_power_cap(self, port, module_sm_obj, dynamic=False):
         logger.log_info("enter check_power_cap port {} module_sm_obj {}".format(port, module_sm_obj))
@@ -620,7 +620,7 @@ class ModulesMgmtTask(threading.Thread):
         indep_fd_power_limit = self.get_sysfs_ethernet_port_fd(SYSFS_INDEPENDENT_FD_POWER_LIMIT, port)
         cage_power_limit = utils.read_int_from_file(indep_fd_power_limit)
         logger.log_info("check_power_cap got cage_power_limit {} for port {} module_sm_obj {}".format(cage_power_limit, port, module_sm_obj))
-        if powercap > int(cage_power_limit) * 4:  # Multiplying the sysfs value (0.25 Watt units) by 4 aligns it with the EEPROM max power value (1 Watt units), ensuring both are in the same unit for a meaningful comparison
+        if powercap > int(cage_power_limit):
             logger.log_info("check_power_cap powercap {} != cage_power_limit {} for port {} module_sm_obj {}".format(powercap, cage_power_limit, port, module_sm_obj))
             module_sm_obj.set_final_state(STATE_POWER_LIMIT_ERROR)
             return STATE_POWER_LIMIT_ERROR
