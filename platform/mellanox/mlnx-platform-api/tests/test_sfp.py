@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES.
+# Copyright (c) 2021-2024 NVIDIA CORPORATION & AFFILIATES.
 # Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -131,6 +131,17 @@ class TestSfp:
             handle.write.side_effect = OSError('')
             assert not sfp.write_eeprom(0, 1, bytearray([1]))
 
+        mo = mock.mock_open()
+        print('after mock open')
+        with mock.patch('sonic_platform.sfp.open', mo):
+            handle = mo()
+            handle.write.side_effect = [128, 128, 64]
+            handle.seek.side_effect = [0, 128, 0, 128, 0]
+            bytes_to_write = bytearray([0]*128 + [1]*128 + [2]*64)
+            assert sfp.write_eeprom(0, 320, bytes_to_write)
+            expected_calls = [mock.call(bytes_to_write), mock.call(bytes_to_write[128:]), mock.call(bytes_to_write[256:])]
+            handle.write.assert_has_calls(expected_calls)
+
     @mock.patch('sonic_platform.sfp.SFP._get_page_and_page_offset')
     def test_sfp_read_eeprom(self, mock_get_page):
         sfp = SFP(0)
@@ -151,6 +162,13 @@ class TestSfp:
 
             handle.read.side_effect = OSError('')
             assert sfp.read_eeprom(0, 1) is None
+
+        mo = mock.mock_open()
+        with mock.patch('sonic_platform.sfp.open', mo):
+            handle = mo()
+            handle.read.side_effect = [b'\x00'*128, b'\x01'*128, b'\x02'*64]
+            handle.seek.side_effect = [0, 128, 0, 128, 0]
+            assert sfp.read_eeprom(0, 320) == bytearray([0]*128 + [1]*128 + [2]*64)
 
     @mock.patch('sonic_platform.sfp.SFP._fetch_port_status')
     def test_is_port_admin_status_up(self, mock_port_status):
