@@ -1277,7 +1277,10 @@ class SFP(NvidiaSFPCommon):
         Returns:
             bool: True if the api object supports software control
         """
-        return self.is_cmis_api(xcvr_api) and not xcvr_api.is_flat_memory()
+        if xcvr_api.is_flat_memory():
+            return self.is_cmis_api(xcvr_api) or self.is_sff_api(xcvr_api)
+        else:
+            return self.is_cmis_api(xcvr_api)  # In the future we will need to tag SFF optics as SW_CONTROL as well
 
     def check_power_capability(self):
         """Check module max power with cage power limit
@@ -1938,3 +1941,4 @@ class RJ45Port(NvidiaSFPCommon):
         """
         status = super().get_module_status()
         return SFP_STATUS_REMOVED if status == SFP_STATUS_UNKNOWN else status
+
