@@ -1064,8 +1064,6 @@ class SFP(NvidiaSFPCommon):
             0.0 if module temperature is not supported or module is under initialization
             other float value if module temperature is available
         """
-        if not self.get_presence():
-            return None
         try:
             if not self.is_sw_control():
                 temp_file = f'/sys/module/sx_core/asic0/module{self.sdk_index}/temperature/input'
@@ -1090,8 +1088,6 @@ class SFP(NvidiaSFPCommon):
             0.0 if warning threshold is not supported or module is under initialization
             other float value if warning threshold is available
         """
-        if not self.get_presence():
-            return None
         try:
             self.is_sw_control()
         except:
@@ -1114,8 +1110,6 @@ class SFP(NvidiaSFPCommon):
             0.0 if critical threshold is not supported or module is under initialization
             other float value if critical threshold is available
         """
-        if not self.get_presence():
-            return None
         try:
             self.is_sw_control()
         except:
