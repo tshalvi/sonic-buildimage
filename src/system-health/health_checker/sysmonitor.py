@@ -477,6 +477,7 @@ class Sysmonitor(ProcessTaskBase):
         self.update_system_status()
 
         from queue import Empty
+        import traceback
         # Queue to receive the STATEDB and Systemd state change event
         while not self.task_stopping_event.is_set():
             try:
@@ -491,6 +492,7 @@ class Sysmonitor(ProcessTaskBase):
                 pass
             except Exception as e:
                 logger.log_error("system_service"+str(e))
+                logger.log_error(traceback.format_exc())
 
         #cleanup tables  "'ALL_SERVICE_STATUS*', 'SYSTEM_READY*'" from statedb
         self.state_db.delete_all_by_pattern(self.state_db.STATE_DB, "ALL_SERVICE_STATUS|*")
