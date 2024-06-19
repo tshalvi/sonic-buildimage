@@ -541,6 +541,19 @@ class SFP(NvidiaSFPCommon):
                 if log_on_error:
                     logger.log_warning(f'Failed to read sfp={self.sdk_index} EEPROM page={page}, page_offset={page_offset}, '\
                         f'size={num_bytes}, offset={offset}, error = {e}')
+
+                    logger.log_error(f"--- tomer --- {self.sdk_index}: Entered monitored if statement")
+                    logger.log_error(f"--- tomer --- {self.sdk_index}: Stack trace leading to this call:")
+                    stack = traceback.extract_stack()
+                    for frame in stack:
+                        logger.log_error(f"--- tomer --- {self.sdk_index}: File: {frame.filename}")
+                        logger.log_error(f"--- tomer --- {self.sdk_index}: Line number: {frame.lineno}")
+                        logger.log_error(f"--- tomer --- {self.sdk_index}: Function name: {frame.name}")
+                        logger.log_error(f"--- tomer --- {self.sdk_index}: Line of code: {frame.line}")
+                        logger.log_error('-' * 40)
+                    logger.log_error('-' * 40)
+                    logger.log_error('-' * 40)
+
                 return None
 
         return bytearray(result)
