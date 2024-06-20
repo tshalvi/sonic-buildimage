@@ -29,6 +29,7 @@ try:
     import os
     import threading
     import time
+    import traceback
     from sonic_py_common.logger import Logger
     from sonic_py_common.general import check_output_pipe
     from . import utils
