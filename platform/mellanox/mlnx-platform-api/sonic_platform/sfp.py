@@ -254,6 +254,14 @@ ACTION_ON_SW_CONTROL = 'On Software Control'
 ACTION_ON_FW_CONTROL = 'On Firmware Control'
 ACTION_ON_POWER_LIMIT_ERROR = 'On Power Limit Error'
 ACTION_ON_CANCEL_WAIT = 'On Cancel Wait'
+
+# States/actions for always firmware control ports
+STATE_FCP_DOWN = 'Down(Firmware Control)'
+STATE_FCP_INIT = 'Initializing(Firmware Control)'
+STATE_FCP_NOT_PRESENT = 'Not Present(Firmware Control)'
+STATE_FCP_PRESENT = 'Present(Firmware Control)'
+
+ACTION_FCP_ON_START = 'On Start(Firmware Control)'
 # Module host management definitions end
 
 # SFP EEPROM limited bytes
@@ -464,7 +472,11 @@ class SFP(NvidiaSFPCommon):
         self.slot_id = slot_id
         self._sfp_type_str = None
         # SFP state, only applicable for module host management
-        self.state = STATE_DOWN
+        fw_control_ports = DeviceDataManager.get_always_fw_control_ports()
+        if not fw_control_ports or self.sdk_index not in fw_control_ports:
+            self.state = STATE_DOWN
+        else:
+            self.state = STATE_FCP_DOWN
 
     def __str__(self):
         return f'SFP {self.sdk_index}'
@@ -1445,7 +1457,7 @@ class SFP(NvidiaSFPCommon):
             sm.add_state(STATE_POWER_LIMIT_ERROR).set_entry_action(ACTION_ON_POWER_LIMIT_ERROR) \
               .add_transition(EVENT_POWER_GOOD, STATE_POWERED_ON) \
               .add_transition(EVENT_NOT_PRESENT, STATE_NOT_PRESENT)
-              
+                          
             cls.action_table = {}
             cls.action_table[ACTION_ON_START] = cls.action_on_start
             cls.action_table[ACTION_ON_RESET] = cls.action_on_reset
@@ -1454,6 +1466,16 @@ class SFP(NvidiaSFPCommon):
             cls.action_table[ACTION_ON_FW_CONTROL] = cls.action_on_fw_control
             cls.action_table[ACTION_ON_CANCEL_WAIT] = cls.action_on_cancel_wait
             cls.action_table[ACTION_ON_POWER_LIMIT_ERROR] = cls.action_on_power_limit_error
+            
+            # For always firewire control ports
+            sm.add_state(STATE_FCP_DOWN).add_transition(EVENT_START, STATE_FCP_INIT)
+            sm.add_state(STATE_FCP_INIT).set_entry_action(ACTION_FCP_ON_START) \
+              .add_transition(EVENT_NOT_PRESENT, STATE_FCP_NOT_PRESENT) \
+              .add_transition(EVENT_PRESENT, STATE_FCP_PRESENT)
+            sm.add_state(STATE_FCP_NOT_PRESENT).add_transition(EVENT_PRESENT, STATE_FCP_PRESENT)
+            sm.add_state(STATE_FCP_PRESENT).add_transition(EVENT_NOT_PRESENT, STATE_FCP_NOT_PRESENT)
+            
+            cls.action_table[ACTION_FCP_ON_START] = cls.action_fcp_on_start
             
             cls.sm = sm
             
@@ -1483,6 +1505,14 @@ class SFP(NvidiaSFPCommon):
                 sfp.on_event(EVENT_RESET)
             else:
                 sfp.on_event(EVENT_POWER_ON)
+
+    @classmethod
+    def action_fcp_on_start(cls, sfp):
+        present = utils.read_int_from_file(f'/sys/module/sx_core/asic0/module{sfp.sdk_index}/present')
+        if present:
+            sfp.on_event(EVENT_PRESENT)
+        else:
+            sfp.on_event(EVENT_NOT_PRESENT)
             
     @classmethod
     def action_on_reset(cls, sfp):
@@ -1579,10 +1609,12 @@ class SFP(NvidiaSFPCommon):
         Returns:
             bool: True if the module is in a stable state
         """
-        return self.state in (STATE_NOT_PRESENT, STATE_SW_CONTROL, STATE_FW_CONTROL, STATE_POWER_BAD, STATE_POWER_LIMIT_ERROR)
+        return self.state in (STATE_NOT_PRESENT, STATE_SW_CONTROL, STATE_FW_CONTROL, 
+                              STATE_POWER_BAD, STATE_POWER_LIMIT_ERROR, STATE_FCP_NOT_PRESENT,
+                              STATE_FCP_PRESENT)
         
     def get_fds_for_poling(self):            
-        if self.state == STATE_FW_CONTROL:
+        if self.state == STATE_FW_CONTROL or self.state == STATE_FCP_NOT_PRESENT or self.state == STATE_FCP_PRESENT:
             return {
                 'present': self.get_fd('present')
             } 
@@ -1598,11 +1630,9 @@ class SFP(NvidiaSFPCommon):
         Args:
             port_dict (dict): {<sfp_index>:<sfp_state>}
         """
-        if self.state == STATE_NOT_PRESENT:
+        if self.state == STATE_NOT_PRESENT or self.state == STATE_FCP_NOT_PRESENT:
             port_dict[self.sdk_index + 1] = SFP_STATUS_REMOVED
-        elif self.state == STATE_SW_CONTROL:
-            port_dict[self.sdk_index + 1] = SFP_STATUS_INSERTED
-        elif self.state == STATE_FW_CONTROL:
+        elif self.state == STATE_SW_CONTROL or self.state == STATE_FW_CONTROL or self.state == STATE_FCP_PRESENT:
             port_dict[self.sdk_index + 1] = SFP_STATUS_INSERTED
         elif self.state == STATE_POWER_BAD or self.state == STATE_POWER_LIMIT_ERROR:
             sfp_state = SFP.SFP_ERROR_BIT_POWER_BUDGET_EXCEEDED | SFP.SFP_STATUS_BIT_INSERTED
@@ -1621,7 +1651,7 @@ class SFP(NvidiaSFPCommon):
         # find fds registered by this SFP
         current_registered_fds = {item[2]: (fileno, item[1]) for fileno, item in all_registered_fds.items() if item[0] == self.sdk_index}
         logger.log_debug(f'SFP {self.sdk_index} registered fds are: {current_registered_fds}')
-        if self.state == STATE_FW_CONTROL:
+        if self.state == STATE_FW_CONTROL or self.state == STATE_FCP_NOT_PRESENT or self.state == STATE_FCP_PRESENT:
             target_poll_types = ['present']
         else:
             target_poll_types = ['hw_present', 'power_good']
@@ -1657,9 +1687,10 @@ class SFP(NvidiaSFPCommon):
         """
         if fd_type == 'hw_present' or fd_type == 'present':
             if fd_value == int(SFP_STATUS_INSERTED):
-                return self.state in (STATE_SW_CONTROL, STATE_FW_CONTROL, STATE_POWER_BAD, STATE_POWER_LIMIT_ERROR)
+                return self.state in (STATE_SW_CONTROL, STATE_FW_CONTROL, STATE_POWER_BAD,
+                                      STATE_POWER_LIMIT_ERROR, STATE_FCP_PRESENT)
             elif fd_value == int(SFP_STATUS_REMOVED):
-                return self.state == STATE_NOT_PRESENT
+                return self.state in (STATE_NOT_PRESENT, STATE_FCP_NOT_PRESENT)
         elif fd_type == 'power_good':
             if fd_value == 1:
                 return self.state in (STATE_SW_CONTROL, STATE_NOT_PRESENT, STATE_RESETTING)
