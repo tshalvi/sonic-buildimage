@@ -497,11 +497,8 @@ class SFP(NvidiaSFPCommon):
         """
         presence_sysfs = f'/sys/module/sx_core/asic0/module{self.sdk_index}/hw_present' if self.is_sw_control() else f'/sys/module/sx_core/asic0/module{self.sdk_index}/present'
         if utils.read_int_from_file(presence_sysfs) != 1:
-            self.not_presence_reason = f'{presence_sysfs} value is not 1'
             return False
         eeprom_raw = self._read_eeprom(0, 1, log_on_error=False)
-        if eeprom_raw is None:
-            self.not_presence_reason = 'eeprom is not available'
         return eeprom_raw is not None
 
     # read eeprom specfic bytes beginning from offset with size as num_bytes
