@@ -34,7 +34,8 @@ RUN apt-get update && \
 {%- if ENABLE_ASAN == "y" %}
         libasan6 \
 {%- endif %}
-        python3-setuptools
+        python3-setuptools \
+        dmidecode
 
 RUN pip3 install --upgrade pip
 RUN apt-get purge -y python-pip
