@@ -703,9 +703,18 @@ if [[ $SECURE_UPGRADE_MODE == 'dev' || $SECURE_UPGRADE_MODE == "prod" && $SONIC_
     echo "Secure Boot support build stage: Starting .."
 
     # debian secure boot dependecies
-    sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT apt-get -y install      \
-        shim-unsigned \
-        grub-efi
+    sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT apt-get -y install grub-efi
+
+    # TEMP: Remove after merging SONiC 202311. Instead of that piece of code we
+    # must install shim-unsigned using apt-get
+    if [[ $CONFIGURED_ARCH == armhf ]]; then
+        sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT apt-get -y install shim-unsigned
+    else
+        wget http://ftp.debian.org/debian/pool/main/s/shim/shim-unsigned_15.8-1~deb11u1_$CONFIGURED_ARCH.deb -O shim-unsigned.deb
+        sudo mv shim-unsigned.deb $FILESYSTEM_ROOT/tmp/
+        sudo LANG=C DEBIAN_FRONTEND=noninteractive chroot $FILESYSTEM_ROOT dpkg -i /tmp/shim-unsigned.deb
+        sudo rm -f $FILESYSTEM_ROOT/tmp/shim-unsigned.deb
+    fi
 
     if [ ! -f $SECURE_UPGRADE_SIGNING_CERT ]; then
         echo "Error: SONiC SECURE_UPGRADE_SIGNING_CERT=$SECURE_UPGRADE_SIGNING_CERT key missing"
