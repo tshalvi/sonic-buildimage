@@ -30,6 +30,7 @@ try:
     import os
     import threading
     import time
+    import inspect
     from sonic_py_common.logger import Logger
     from sonic_py_common.general import check_output_pipe
     from . import utils
@@ -528,12 +529,31 @@ class SFP(NvidiaSFPCommon):
         Example:
             mlxreg -d /dev/mst/mt52100_pciconf0 --reg_name MCIA --indexes slot_index=0,module=1,device_address=154,page_number=5,i2c_device_address=0x50,size=1,bank_number=0 --set dword[0]=0x01000000 -y
         """
+
+        logger.log_error(f'--- err:-5_debug --- Entered write_eeprom()')
+        stack_trace = ["sfp.write_eeprom()"]
+        for frame in inspect.stack()[1:]:
+            func_name = frame.function
+            cls_name = None
+            if "self" in frame.frame.f_locals:
+                cls_name = frame.frame.f_locals["self"].__class__.__name__
+            elif "cls" in frame.frame.f_locals:
+                cls_name = frame.frame.f_locals["cls"].__name__
+
+            if cls_name:
+                stack_trace.append(f"{cls_name}.{func_name}()")
+            else:
+                stack_trace.append(f"{func_name}()")
+        execution_flow = " --> ".join(reversed(stack_trace))
+        logger.log_error(f'--- err:-5_debug --- Call Stack: {execution_flow}')
+
         if num_bytes != len(write_buffer):
             logger.log_error("Error mismatch between buffer length and number of bytes to be written")
             return False
 
         while num_bytes > 0:
             page_num, page, page_offset = self._get_page_and_page_offset(offset)
+            logger.log_error(f'--- err:-5_debug --- Attempt to write to:  page={page}, offset={page_offset}')
             if not page:
                 return False
 
