@@ -8,8 +8,7 @@
 	branch = 202412
 [submodule "sonic-sairedis"]
 	path = src/sonic-sairedis
-	url = https://github.com/Azure/sonic-sairedis.msft
-	branch = 202412
+	url = git@github.com:tshalvi/sonic-sairedis.git
 [submodule "sonic-swss"]
 	path = src/sonic-swss
 	url = https://github.com/nvidia-sonic/sonic-swss
