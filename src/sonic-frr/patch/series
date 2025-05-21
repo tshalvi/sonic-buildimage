@@ -107,3 +107,11 @@
 0125-bgpd-Fix-holdtime-not-working-properly-when-busy.patch
 0126-bgpd-ensure-that-bgp_generate_updgrp_packets-shares-.patch
 0127-zebra-show-command-to-display-metaq-info.patch
+0128-bgpd-add-total-path-count-for-bgp-net-in-json-output.patch
+0129-zebra-Prevent-a-kernel-route-from-being-there-when-a.patch
+0130-zebra-show-nexthop-count-in-nexthop-group-command.patch
+0131-lib-Add-nexthop_same_no_ifindex-comparison-function.patch
+0132-zebra-Allow-nhg-s-to-be-reused-when-multiple-interfa.patch
+0133-zebra-Prevent-active-setting-if-interface-is-not-ope.patch
+0134-zebra-Add-nexthop-group-id-to-route-dump.patch
+0135-zebra-Display-interface-name-not-ifindex-in-nh-dump.patch
