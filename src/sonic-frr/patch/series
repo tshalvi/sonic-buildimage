@@ -115,3 +115,4 @@
 0133-zebra-Prevent-active-setting-if-interface-is-not-ope.patch
 0134-zebra-Add-nexthop-group-id-to-route-dump.patch
 0135-zebra-Display-interface-name-not-ifindex-in-nh-dump.patch
+0136-fix-srv6-static-sids-crash.patch
