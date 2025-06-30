@@ -1116,6 +1116,11 @@ class SFP(NvidiaSFPCommon):
         media_interface = self.read_eeprom(CMIS_MEDIA_INTERFACE_TECH_OFFSET, 1)
         return media_interface[0] != 0x0F if media_interface else False
 
+    def is_cmis_rev_supported_for_software_control(self, xcvr_api):
+        cmis_rev = xcvr_api.get_cmis_rev()
+        major, minor = map(int, cmis_rev.split('.'))
+        return (major > 5) or (major == 5 and minor >= 2)
+
     def is_supported_for_software_control(self, xcvr_api):
         """Check if the api object supports software control
 
@@ -1126,12 +1131,12 @@ class SFP(NvidiaSFPCommon):
             bool: True if the api object supports software control
         """
         if xcvr_api.is_flat_memory():
-            if self.is_cmis_api(xcvr_api):
+            if self.is_cmis_api(xcvr_api) and self.is_cmis_rev_supported_for_software_control(xcvr_api):
                 # For Copper active modules, Nvidia doesn't support SW control
                 return self.check_media_interface_technology(xcvr_api)
             return self.is_sff_api(xcvr_api)
 
-        return self.is_cmis_api(xcvr_api)
+        return self.is_cmis_api(xcvr_api) and self.is_cmis_rev_supported_for_software_control(xcvr_api)
 
     def check_power_capability(self):
         """Check module max power with cage power limit
