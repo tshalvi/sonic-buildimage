@@ -117,3 +117,7 @@
 0135-zebra-Display-interface-name-not-ifindex-in-nh-dump.patch
 0136-use-srv6-static-sids-flags-to-prevent-double-uninstall.patch
 0137-zebra-Ensure-that-the-dplane-can-send-the-full-packe.patch
+0138-Revert-vtysh-zebra-Fix-malformed-json-output-for-mul.patch
+0139-lib-add-helpers-to-print-json-keys.patch
+0140-zebra-fix-show-route-vrf-all-memory-consumption.patch
+0141-zebra-fix-show-route-memory-consumption.patch
