@@ -1408,6 +1408,14 @@
                 ]
             }
         },
+        "GNMI_CLIENT_CERT": {
+            "testcert1": {
+                "role": "RW"
+            },
+            "testcert2": {
+                "role": "RO"
+            }
+        },
         "TUNNEL": {
             "MuxTunnel0": {
                 "dscp_mode": "uniform",
