@@ -116,7 +116,7 @@
 	branch = 202411
 [submodule "src/sonic-host-services"]
 	path = src/sonic-host-services
-	url = https://github.com/sonic-net/sonic-host-services
+	url = https://github.com/nvidia-sonic/sonic-host-services
 	branch = 202411
 [submodule "src/sonic-gnmi"]
 	path = src/sonic-gnmi
