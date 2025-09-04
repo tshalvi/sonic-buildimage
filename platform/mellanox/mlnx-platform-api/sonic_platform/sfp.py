@@ -271,6 +271,8 @@ limited_eeprom = {
 # Global logger class instance
 logger = Logger()
 
+_GLOBAL_EEPROM_LOCK = threading.RLock()
+
 
 class NvidiaSFPCommon(SfpOptoeBase):
     sfp_index_to_logical_port_dict = {}
@@ -450,49 +452,60 @@ class SFP(NvidiaSFPCommon):
         if eeprom_raw is None:
             logger.log_error(f'SFP {self.sdk_index} Module was plugged out')
         return eeprom_raw is not None
-    
+
     @classmethod
     def wait_sfp_eeprom_ready(cls, sfp_list, wait_time):
         not_ready_list = sfp_list
-        
+
         while wait_time > 0:
-            not_ready_list = [s for s in not_ready_list if s.state == STATE_FW_CONTROL and s._read_eeprom(0, 1,False) is None]
+            tmp = []
+            for s in not_ready_list:
+                if s.state == STATE_FW_CONTROL:
+                    # Ensure this single-attempt probe is serialized with all other EEPROM I/O
+                    with _GLOBAL_EEPROM_LOCK:
+                        ready = s._read_eeprom(0, 1, False)
+                    if ready is None:
+                        tmp.append(s)
+            not_ready_list = tmp
+
             if not_ready_list:
                 time.sleep(0.1)
                 wait_time -= 0.1
             else:
                 return
-        
+
         for s in not_ready_list:
             logger.log_error(f'SFP {s.sdk_index} eeprom is not ready')
 
-    # read eeprom specfic bytes beginning from offset with size as num_bytes
     def read_eeprom(self, offset, num_bytes, log_on_error=True):
         """
-        Read eeprom specfic bytes beginning from a random offset with size as num_bytes. Tries up to 50 times total on every 0.1s.
-        Returns:
-            bytearray, if raw sequence of bytes are read correctly from the offset of size num_bytes
-            None, if the read_eeprom fails
-        """
-        for attempt in range(MAX_ATTEMPTS):
-            result = self._read_eeprom(offset, num_bytes, log_on_error)
-            if result is not None:
-                logger.log_notice(
-                    f"EEPROM read success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
-                    f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
-                return result
-            if attempt < MAX_ATTEMPTS - 1:  # only sleep if another retry will happen
-                logger.log_notice(
-                    f"EEPROM read attempt {attempt + 1}/{MAX_ATTEMPTS} failed "
-                    f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes}). "
-                    f"Retrying in {RETRY_SLEEP_SEC:.1f}s...")
-                time.sleep(RETRY_SLEEP_SEC)
+        Read eeprom specific bytes beginning from a random offset with size as num_bytes.
+        Tries up to MAX_ATTEMPTS with RETRY_SLEEP_SEC between attempts.
 
-        if log_on_error:
-            logger.log_error(
-                f"EEPROM read failed after {MAX_ATTEMPTS} attempts "
-                f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
-        return None
+        Returns:
+            bytearray on success, or None on failure.
+        """
+        # Serialize ALL EEPROM access across all modules in this process
+        with _GLOBAL_EEPROM_LOCK:
+            for attempt in range(MAX_ATTEMPTS):
+                result = self._read_eeprom(offset, num_bytes, log_on_error)
+                if result is not None:
+                    logger.log_notice(
+                        f"EEPROM read success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
+                        f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
+                    return result
+                if attempt < MAX_ATTEMPTS - 1:
+                    logger.log_notice(
+                        f"EEPROM read attempt {attempt + 1}/{MAX_ATTEMPTS} failed "
+                        f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes}). "
+                        f"Retrying in {RETRY_SLEEP_SEC:.1f}s...")
+                    time.sleep(RETRY_SLEEP_SEC)
+
+            if log_on_error:
+                logger.log_error(
+                    f"EEPROM read failed after {MAX_ATTEMPTS} attempts "
+                    f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
+            return None
 
     def _read_eeprom(self, offset, num_bytes, log_on_error=True):
         """
@@ -550,37 +563,37 @@ class SFP(NvidiaSFPCommon):
 
         return bytearray(result)
 
-    # write eeprom specfic bytes beginning from offset with size as num_bytes
     def write_eeprom(self, offset, num_bytes, write_buffer):
         """
-        write eeprom specfic bytes beginning from a random offset with size as num_bytes
-        and write_buffer as the required bytes. Tries up to 50 times total on every 0.1s.
+        Write eeprom specific bytes beginning from a random offset with size as num_bytes.
+        Tries up to MAX_ATTEMPTS with RETRY_SLEEP_SEC between attempts.
+
         Returns:
-            Boolean, true if the write succeeded and false if it did not succeed.
+            True on success, False on failure.
         """
-        if num_bytes != len(write_buffer):
-            logger.log_error("Error mismatch between buffer length and number of bytes to be written")
-            return False
+        # Serialize ALL EEPROM access across all modules in this process
+        with _GLOBAL_EEPROM_LOCK:
+            if num_bytes != len(write_buffer):
+                logger.log_error("Error mismatch between buffer length and number of bytes to be written")
+                return False
 
-        for attempt in range(MAX_ATTEMPTS):
-            ret = self._write_eeprom(offset, num_bytes, write_buffer)
-            if ret:
+            for attempt in range(MAX_ATTEMPTS):
+                ret = self._write_eeprom(offset, num_bytes, write_buffer)
+                if ret:
+                    logger.log_notice(
+                        f"EEPROM write success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
+                        f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}")
+                    return True
                 logger.log_notice(
-                    f"EEPROM write success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
-                    f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}")
-                return True
-            logger.log_notice(
-                f"EEPROM write attempt {attempt + 1}/{MAX_ATTEMPTS} failed "
-                f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}. "
-                f"Retrying in {RETRY_SLEEP_SEC:.1f}s..."
-            )
-            time.sleep(RETRY_SLEEP_SEC)
+                    f"EEPROM write attempt {attempt + 1}/{MAX_ATTEMPTS} failed "
+                    f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}. "
+                    f"Retrying in {RETRY_SLEEP_SEC:.1f}s...")
+                time.sleep(RETRY_SLEEP_SEC)
 
-        logger.log_error(
-            f"EEPROM write failed after {MAX_ATTEMPTS} attempts "
-            f"for sfp={getattr(self, 'sdk_index', 'N/A')}, offset={offset}, size={num_bytes}"
-        )
-        return False
+            logger.log_error(
+                f"EEPROM write failed after {MAX_ATTEMPTS} attempts "
+                f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}")
+            return False
 
     def _write_eeprom(self, offset, num_bytes, write_buffer):
         """
@@ -806,20 +819,23 @@ class SFP(NvidiaSFPCommon):
         if self._sfp_type_str is None:
             page = os.path.join(eeprom_path, SFP_PAGE0_PATH)
             try:
-                with open(page, mode='rb', buffering=0) as f:
-                    id_byte_raw = bytearray(f.read(1))
-                    id = id_byte_raw[0]
-                    if id == 0x18 or id == 0x19 or id == 0x1e:
-                        self._sfp_type_str = SFP_TYPE_CMIS
-                    elif id == 0x11 or id == 0x0D:
-                        # in sonic-platform-common, 0x0D is treated as sff8436,
-                        # but it shared the same implementation on Nvidia platforms,
-                        # so, we treat it as sff8636 here.
-                        self._sfp_type_str = SFP_TYPE_SFF8636
-                    elif id == 0x03:
-                        self._sfp_type_str = SFP_TYPE_SFF8472
-                    else:
-                        logger.log_error(f'Unsupported sfp type {id}')
+                # Protect the direct EEPROM read so it doesn't interleave with other reads/writes
+                with _GLOBAL_EEPROM_LOCK:
+                    with open(page, mode='rb', buffering=0) as f:
+                        id_byte_raw = bytearray(f.read(1))
+
+                id = id_byte_raw[0]
+                if id == 0x18 or id == 0x19 or id == 0x1e:
+                    self._sfp_type_str = SFP_TYPE_CMIS
+                elif id == 0x11 or id == 0x0D:
+                    # in sonic-platform-common, 0x0D is treated as sff8436,
+                    # but it shared the same implementation on Nvidia platforms,
+                    # so, we treat it as sff8636 here.
+                    self._sfp_type_str = SFP_TYPE_SFF8636
+                elif id == 0x03:
+                    self._sfp_type_str = SFP_TYPE_SFF8472
+                else:
+                    logger.log_error(f'Unsupported sfp type {id}')
             except (OSError, IOError) as e:
                 # SFP_EEPROM_NOT_AVAILABLE usually indicates SFP is not present, no need
                 # print such error information to log
