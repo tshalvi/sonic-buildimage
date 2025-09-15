@@ -474,8 +474,8 @@ class SFP(NvidiaSFPCommon):
         (errno.EIO, typically reported as -5 from the kernel).
 
         Returns:
-            bytearray, if raw sequence of bytes are read correctly from the offset of size num_bytes
-            None, if the read_eeprom fails
+            bytearray: If the data was successfully read.
+            None: If all attempts failed (whether due to I2C errors after max retries, or due to other errors without retry).
         """
         for attempt in range(MAX_ATTEMPTS):
             result, err = self._read_eeprom(offset, num_bytes, log_on_error)
@@ -522,8 +522,9 @@ class SFP(NvidiaSFPCommon):
             log_on_error (bool, optional): whether log error when exception occurs. Defaults to True.
 
         Returns:
-            (bytearray, None) on success
-            (None, errno|None) on failure
+            (bytearray, None): On success, returns the data read and None for errno.
+            (None, errno): On failure due to a specific OS error, returns None and the errno value.
+            (None, None): On failure without an associated errno (e.g., empty page or invalid page).
         """
         result = bytearray(0)
         while num_bytes > 0:
@@ -632,8 +633,9 @@ class SFP(NvidiaSFPCommon):
         Single-attempt write: write eeprom specific bytes beginning from a random offset with size as num_bytes
         and write_buffer as the required bytes
         Returns:
-            (True, None) on success
-            (False, errno|None) on failure
+            (True, None): On success.
+            (False, errno): On failure with a specific OS error.
+            (False, None): On failure without an associated errno (e.g., unexpected short write).
 
         Example:
             mlxreg -d /dev/mst/mt52100_pciconf0 --reg_name MCIA --indexes slot_index=0,module=1,device_address=154,page_number=5,i2c_device_address=0x50,size=1,bank_number=0 --set dword[0]=0x01000000 -y
