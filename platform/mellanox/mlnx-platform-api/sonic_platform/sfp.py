@@ -208,6 +208,7 @@ CMIS_MCI_MASK = 0b00001100
 
 MAX_ATTEMPTS = 50
 RETRY_SLEEP_SEC = 0.1
+EEPROM_RETRY_ERR_THRESHOLD = 10
 
 STATE_DOWN = 'Down'                             # Initial state
 STATE_INIT = 'Initializing'                     # Module starts initializing, check module present, also power on the module if need
@@ -480,14 +481,16 @@ class SFP(NvidiaSFPCommon):
         for attempt in range(MAX_ATTEMPTS):
             result, err = self._read_eeprom(offset, num_bytes, log_on_error)
             if result is not None:
-                logger.log_notice(
+                logger.log_debug(
                     f"EEPROM read success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
                     f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
                 return result
 
+            log_func = (logger.log_error if attempt + 1 > EEPROM_RETRY_ERR_THRESHOLD else logger.log_debug)
+
             # Retry only on EIO (-5)
             if err == errno.EIO and attempt < MAX_ATTEMPTS - 1:
-                logger.log_notice(
+                log_func(
                     f"EEPROM read attempt {attempt + 1}/{MAX_ATTEMPTS} failed with I2C error "
                     f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes}). "
                     f"Retrying in {RETRY_SLEEP_SEC:.1f}s...")
@@ -496,12 +499,12 @@ class SFP(NvidiaSFPCommon):
 
             # Non-I2C-error or last attempt → stop retrying
             if err is not None:
-                logger.log_notice(
+                log_func(
                     f"EEPROM read failed (errno={err}, {os.strerror(err)}) "
                     f"after attempt {attempt + 1}/{MAX_ATTEMPTS} "
                     f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
             else:
-                logger.log_notice(
+                log_func(
                     f"EEPROM read failed after attempt {attempt + 1}/{MAX_ATTEMPTS} "
                     f"(sfp={self.sdk_index}, offset={offset}, size={num_bytes})")
             return None
@@ -596,14 +599,16 @@ class SFP(NvidiaSFPCommon):
         for attempt in range(MAX_ATTEMPTS):
             ret, err = self._write_eeprom(offset, num_bytes, write_buffer)
             if ret:
-                logger.log_notice(
+                logger.log_debug(
                     f"EEPROM write success after attempt {attempt + 1}/{MAX_ATTEMPTS} "
                     f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}")
                 return True
 
+            log_func = (logger.log_error if attempt + 1 > EEPROM_RETRY_ERR_THRESHOLD else logger.log_debug)
+
             # Retry only on EIO (-5)
             if err == errno.EIO and attempt < MAX_ATTEMPTS - 1:
-                logger.log_notice(
+                log_func(
                     f"EEPROM write attempt {attempt + 1}/{MAX_ATTEMPTS} failed with I2C error "
                     f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes}. "
                     f"Retrying in {RETRY_SLEEP_SEC:.1f}s...")
@@ -612,12 +617,12 @@ class SFP(NvidiaSFPCommon):
 
             # Non-I2C-error or last attempt → stop retrying
             if err is not None:
-                logger.log_notice(
+                log_func(
                     f"EEPROM write failed (errno={err}, {os.strerror(err)}) "
                     f"for sfp={self.sdk_index}, offset={offset}, size={num_bytes} "
                     f"after attempt {attempt + 1}/{MAX_ATTEMPTS}")
             else:
-                logger.log_notice(
+                log_func(
                     f"EEPROM write failed for sfp={self.sdk_index}, offset={offset}, size={num_bytes} "
                     f"after attempt {attempt + 1}/{MAX_ATTEMPTS}")
             return False
