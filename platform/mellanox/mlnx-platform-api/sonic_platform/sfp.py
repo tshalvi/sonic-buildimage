@@ -276,24 +276,23 @@ class _GlobalI2CLock:
     POSIX named semaphore ONLY.
     """
     _sem = None
-    _init_lock = threading.Lock()
     SEM_NAME = "/sonic_sfp_i2c_lock"
 
     @classmethod
     def _get_sem(cls):
-        with cls._init_lock:
-            if cls._sem is not None:
-                return cls._sem
-            try:
-                cls._sem = posix_ipc.Semaphore(
-                    cls.SEM_NAME,
-                    flags=posix_ipc.O_CREX,
-                    initial_value=1,
-                    mode=0o660,
-                )
-            except posix_ipc.ExistentialError:
-                cls._sem = posix_ipc.Semaphore(cls.SEM_NAME)
+        if cls._sem is not None:
             return cls._sem
+
+        try:
+            cls._sem = posix_ipc.Semaphore(
+                cls.SEM_NAME,
+                flags=posix_ipc.O_CREX,
+                initial_value=1,
+                mode=0o660,
+            )
+        except posix_ipc.ExistentialError:
+            cls._sem = posix_ipc.Semaphore(cls.SEM_NAME)
+        return cls._sem
 
     def __enter__(self):
         self._sem = type(self)._get_sem()
