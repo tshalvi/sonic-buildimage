@@ -30,6 +30,7 @@ try:
     import os
     import threading
     import time
+    import posix_ipc
     from sonic_py_common.logger import Logger
     from sonic_py_common.general import check_output_pipe
     from . import utils
@@ -269,6 +270,56 @@ limited_eeprom = {
 logger = Logger()
 
 
+class _GlobalI2CLock:
+    """
+    Cross-process mutex for any I2C EEPROM access (read/write) across all SFP modules.
+    POSIX named semaphore ONLY.
+    """
+    _sem = None
+    _init_lock = threading.Lock()
+    SEM_NAME = "/sonic_sfp_i2c_lock"
+
+    @classmethod
+    def _get_sem(cls):
+        with cls._init_lock:
+            if cls._sem is not None:
+                return cls._sem
+            try:
+                cls._sem = posix_ipc.Semaphore(
+                    cls.SEM_NAME,
+                    flags=posix_ipc.O_CREX,
+                    initial_value=1,
+                    mode=0o660,
+                )
+                logger.log_error(f"---TOMER--- I2C semaphore created: name={cls.SEM_NAME}")
+            except posix_ipc.ExistentialError:
+                cls._sem = posix_ipc.Semaphore(cls.SEM_NAME)
+                logger.log_error(f"---TOMER--- I2C semaphore opened: name={cls.SEM_NAME}")
+            return cls._sem
+
+    def __enter__(self):
+        self._sem = type(self)._get_sem()
+        self._wait_start = time.monotonic()
+        pid = os.getpid()
+        logger.log_error(f"---TOMER--- I2C lock: acquire start (pid={pid})")
+        self._sem.acquire()
+        waited_ms = int((time.monotonic() - self._wait_start) * 1000)
+        if waited_ms > 0:
+            logger.log_error(f"---TOMER--- I2C lock: acquired after {waited_ms} ms (pid={pid})")
+        else:
+            logger.log_error(f"---TOMER--- I2C lock: acquired immediately (pid={pid})")
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        pid = os.getpid()
+        try:
+            self._sem.release()
+            logger.log_error(f"---TOMER--- I2C lock: released (pid={pid})")
+        except Exception as e:
+            logger.log_error(f"---TOMER--- I2C lock: release failed (pid={pid}) - {e}")
+        return False
+
+
 class NvidiaSFPCommon(SfpOptoeBase):
     sfp_index_to_logical_port_dict = {}
     sfp_index_to_logical_lock = threading.Lock()
@@ -482,43 +533,44 @@ class SFP(NvidiaSFPCommon):
         Returns:
             bytearray: the content of EEPROM
         """
-        result = bytearray(0)
-        while num_bytes > 0:
-            _, page, page_offset = self._get_page_and_page_offset(offset)
-            if not page:
-                return None
+        with _GlobalI2CLock():
+            result = bytearray(0)
+            while num_bytes > 0:
+                _, page, page_offset = self._get_page_and_page_offset(offset)
+                if not page:
+                    return None
 
-            try:
-                with open(page, mode='rb', buffering=0) as f:
-                    f.seek(page_offset)
-                    content = f.read(num_bytes)
-                    if not result:
-                        result = content
-                    else:
-                        result += content
-                    read_length = len(content)
-                    if read_length == 0:
-                        logger.log_error(f'SFP {self.sdk_index}: EEPROM page {page} is empty, no data retrieved')
-                        return None
-                    num_bytes -= read_length
-                    if num_bytes > 0:
-                        page_size = f.seek(0, os.SEEK_END)
-                        if page_offset + read_length == page_size:
-                            offset += read_length
+                try:
+                    with open(page, mode='rb', buffering=0) as f:
+                        f.seek(page_offset)
+                        content = f.read(num_bytes)
+                        if not result:
+                            result = content
                         else:
-                            # Indicate read finished
-                            num_bytes = 0
-                    if ctypes.get_errno() != 0:
-                        raise IOError(f'errno = {os.strerror(ctypes.get_errno())}')
-                    logger.log_debug(f'read EEPROM sfp={self.sdk_index}, page={page}, page_offset={page_offset}, '\
-                        f'size={read_length}, data={content}')
-            except (OSError, IOError) as e:
-                if log_on_error:
-                    logger.log_warning(f'Failed to read sfp={self.sdk_index} EEPROM page={page}, page_offset={page_offset}, '\
-                        f'size={num_bytes}, offset={offset}, error = {e}')
-                return None
+                            result += content
+                        read_length = len(content)
+                        if read_length == 0:
+                            logger.log_error(f'SFP {self.sdk_index}: EEPROM page {page} is empty, no data retrieved')
+                            return None
+                        num_bytes -= read_length
+                        if num_bytes > 0:
+                            page_size = f.seek(0, os.SEEK_END)
+                            if page_offset + read_length == page_size:
+                                offset += read_length
+                            else:
+                                # Indicate read finished
+                                num_bytes = 0
+                        if ctypes.get_errno() != 0:
+                            raise IOError(f'errno = {os.strerror(ctypes.get_errno())}')
+                        logger.log_debug(f'read EEPROM sfp={self.sdk_index}, page={page}, page_offset={page_offset}, '\
+                            f'size={read_length}, data={content}')
+                except (OSError, IOError) as e:
+                    if log_on_error:
+                        logger.log_warning(f'Failed to read sfp={self.sdk_index} EEPROM page={page}, page_offset={page_offset}, '\
+                            f'size={num_bytes}, offset={offset}, error = {e}')
+                    return None
 
-        return bytearray(result)
+            return bytearray(result)
 
     # write eeprom specfic bytes beginning from offset with size as num_bytes
     def write_eeprom(self, offset, num_bytes, write_buffer):
@@ -534,38 +586,39 @@ class SFP(NvidiaSFPCommon):
             logger.log_error("Error mismatch between buffer length and number of bytes to be written")
             return False
 
-        while num_bytes > 0:
-            page_num, page, page_offset = self._get_page_and_page_offset(offset)
-            if not page:
-                return False
+        with _GlobalI2CLock():
+            while num_bytes > 0:
+                page_num, page, page_offset = self._get_page_and_page_offset(offset)
+                if not page:
+                    return False
 
-            try:
-                if self._is_write_protected(page_num, page_offset, num_bytes):
-                    # write limited eeprom is not supported
-                    raise IOError('write limited bytes')
-                with open(page, mode='r+b', buffering=0) as f:
-                    f.seek(page_offset)
-                    ret = f.write(write_buffer[0:num_bytes])
-                    written_buffer = write_buffer[0:ret]
-                    if ret != num_bytes:
-                        page_size = f.seek(0, os.SEEK_END)
-                        if page_offset + ret == page_size:
-                            # Move to next page
-                            write_buffer = write_buffer[ret:num_bytes]
-                            offset += ret
-                        else:
-                            raise IOError(f'write return code = {ret}')
-                    num_bytes -= ret
-                    if ctypes.get_errno() != 0:
-                        raise IOError(f'errno = {os.strerror(ctypes.get_errno())}')
-                    logger.log_debug(f'write EEPROM sfp={self.sdk_index}, page={page}, page_offset={page_offset}, '\
-                        f'size={ret}, left={num_bytes}, data={written_buffer}')
-            except (OSError, IOError) as e:
-                data = ''.join('{:02x}'.format(x) for x in write_buffer)
-                logger.log_error(f'Failed to write EEPROM data sfp={self.sdk_index} EEPROM page={page}, page_offset={page_offset}, size={num_bytes}, '\
-                    f'offset={offset}, data = {data}, error = {e}')
-                return False
-        return True
+                try:
+                    if self._is_write_protected(page_num, page_offset, num_bytes):
+                        # write limited eeprom is not supported
+                        raise IOError('write limited bytes')
+                    with open(page, mode='r+b', buffering=0) as f:
+                        f.seek(page_offset)
+                        ret = f.write(write_buffer[0:num_bytes])
+                        written_buffer = write_buffer[0:ret]
+                        if ret != num_bytes:
+                            page_size = f.seek(0, os.SEEK_END)
+                            if page_offset + ret == page_size:
+                                # Move to next page
+                                write_buffer = write_buffer[ret:num_bytes]
+                                offset += ret
+                            else:
+                                raise IOError(f'write return code = {ret}')
+                        num_bytes -= ret
+                        if ctypes.get_errno() != 0:
+                            raise IOError(f'errno = {os.strerror(ctypes.get_errno())}')
+                        logger.log_debug(f'write EEPROM sfp={self.sdk_index}, page={page}, page_offset={page_offset}, '\
+                            f'size={ret}, left={num_bytes}, data={written_buffer}')
+                except (OSError, IOError) as e:
+                    data = ''.join('{:02x}'.format(x) for x in write_buffer)
+                    logger.log_error(f'Failed to write EEPROM data sfp={self.sdk_index} EEPROM page={page}, page_offset={page_offset}, size={num_bytes}, '\
+                        f'offset={offset}, data = {data}, error = {e}')
+                    return False
+            return True
 
     def get_lpmode(self):
         """
