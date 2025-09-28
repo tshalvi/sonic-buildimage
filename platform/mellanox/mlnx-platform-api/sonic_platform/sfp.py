@@ -282,7 +282,6 @@ class _GlobalI2CLock:
     def _get_sem(cls):
         if cls._sem is not None:
             return cls._sem
-
         try:
             cls._sem = posix_ipc.Semaphore(
                 cls.SEM_NAME,
