@@ -291,32 +291,17 @@ class _GlobalI2CLock:
                     initial_value=1,
                     mode=0o660,
                 )
-                logger.log_error(f"---TOMER--- I2C semaphore created: name={cls.SEM_NAME}")
             except posix_ipc.ExistentialError:
                 cls._sem = posix_ipc.Semaphore(cls.SEM_NAME)
-                logger.log_error(f"---TOMER--- I2C semaphore opened: name={cls.SEM_NAME}")
             return cls._sem
 
     def __enter__(self):
         self._sem = type(self)._get_sem()
-        self._wait_start = time.monotonic()
-        pid = os.getpid()
-        logger.log_error(f"---TOMER--- I2C lock: acquire start (pid={pid})")
         self._sem.acquire()
-        waited_ms = int((time.monotonic() - self._wait_start) * 1000)
-        if waited_ms > 0:
-            logger.log_error(f"---TOMER--- I2C lock: acquired after {waited_ms} ms (pid={pid})")
-        else:
-            logger.log_error(f"---TOMER--- I2C lock: acquired immediately (pid={pid})")
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        pid = os.getpid()
-        try:
-            self._sem.release()
-            logger.log_error(f"---TOMER--- I2C lock: released (pid={pid})")
-        except Exception as e:
-            logger.log_error(f"---TOMER--- I2C lock: release failed (pid={pid}) - {e}")
+        self._sem.release()
         return False
 
 
