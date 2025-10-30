@@ -1,5 +1,6 @@
 #
-# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+# Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,25 +44,25 @@ class TestModuleInitializer:
         initializer.wait_module_ready()
         mock_exists.assert_called_with(module_host_mgmt_initializer.MODULE_READY_HOST_FILE)
         assert initializer.initialized
-        
+
         initializer.initialized = False
         mock_is_host.return_value = False
         initializer.wait_module_ready()
         mock_exists.assert_called_with(module_host_mgmt_initializer.MODULE_READY_CONTAINER_FILE)
-        
+
         initializer.initialized = False
         mock_exists.return_value = True
         initializer.wait_module_ready()
         assert initializer.initialized
-        
+
         initializer.initialized = False
         mock_wait.return_value = False
         mock_exists.return_value = False
         initializer.wait_module_ready()
         assert not initializer.initialized
-        
 
     @mock.patch('sonic_platform.chassis.extract_RJ45_ports_index', mock.MagicMock(return_value=[]))
+    @mock.patch('sonic_platform.chassis.extract_cpo_ports_index', mock.MagicMock(return_value=[]))
     @mock.patch('sonic_platform.device_data.DeviceDataManager.get_sfp_count', mock.MagicMock(return_value=1))
     @mock.patch('sonic_platform.sfp.SFP.initialize_sfp_modules', mock.MagicMock())
     @mock.patch('sonic_platform.module_host_mgmt_initializer.ModuleHostMgmtInitializer.is_initialization_owner')
@@ -76,20 +77,20 @@ class TestModuleInitializer:
         initializer.initialize(c)
         mock_wait_ready.assert_called_once()
         mock_wait_ready.reset_mock()
-        
+
         mock_is_host.return_value = False
         # non-initializer-owner called from container side, just wait
         initializer.initialize(c)
         mock_wait_ready.assert_called_once()
         mock_wait_ready.reset_mock()
-        
+
         mock_owner.return_value = True
         initializer.initialize(c)
         mock_wait_ready.assert_not_called()
         assert initializer.initialized
         assert module_host_mgmt_initializer.initialization_owner
         assert os.path.exists(module_host_mgmt_initializer.MODULE_READY_CONTAINER_FILE)
-        
+
         module_host_mgmt_initializer.clean_up()
         assert not os.path.exists(module_host_mgmt_initializer.MODULE_READY_CONTAINER_FILE)
 
