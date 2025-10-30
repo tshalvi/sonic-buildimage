@@ -595,4 +595,3 @@ class TestSfp:
         assert sfp.get_temperature_info() == (True, 58.0, 75.0, 85.0)
         sfp.is_sw_control.side_effect = Exception('')
         assert sfp.get_temperature_info() == (False, None, None, None)
-

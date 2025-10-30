@@ -337,17 +337,17 @@ class Chassis(ChassisBase):
         if not self._RJ45_port_inited:
             self._RJ45_port_list = extract_RJ45_ports_index()
             self._RJ45_port_inited = True
-        
+
         if not self._cpo_port_inited:
             self._cpo_port_list = extract_cpo_ports_index()
             self._cpo_port_inited = True
-        
+
         num_sfps = DeviceDataManager.get_sfp_count()
         if self._RJ45_port_list is not None:
             num_sfps += len(self._RJ45_port_list)
         if self._cpo_port_list is not None:
             num_sfps += len(self._cpo_port_list)
-        
+
         return num_sfps
 
     def get_all_sfps(self):
@@ -357,7 +357,7 @@ class Chassis(ChassisBase):
         Returns:
             A list of objects derived from SfpBase representing all sfps
             available on this chassis
-        """    
+        """
         if DeviceDataManager.is_module_host_management_mode():
             self.module_host_mgmt_initializer.initialize(self)
         else:
@@ -437,7 +437,7 @@ class Chassis(ChassisBase):
         else:
             self.initialize_sfp()
             return self.get_change_event_legacy(timeout)
-            
+
     def get_change_event_for_module_host_management_mode(self, timeout):
         """Get SFP change event when module host management mode is enabled.
 
@@ -469,9 +469,9 @@ class Chassis(ChassisBase):
                     self.registered_fds[fd.fileno()] = (s.sdk_index, fd, fd_type)
 
             logger.log_debug(f'Registered SFP file descriptors for polling: {self.registered_fds}')
-                    
+
         from . import sfp
-        
+
         wait_forever = (timeout == 0)
         # poll timeout should be no more than 1000ms to ensure fast shutdown flow
         timeout = 1000.0 if timeout >= 1000 else float(timeout)
@@ -479,14 +479,14 @@ class Chassis(ChassisBase):
         error_dict = {}
         begin = time.monotonic()
         wait_ready_task = sfp.SFP.get_wait_ready_task()
-        
-        while True:        
+
+        while True:
             fds_events = self.poll_obj.poll(timeout)
             for fileno, _ in fds_events:
                 if fileno not in self.registered_fds:
                     logger.log_error(f'Unknown file no {fileno} from poll event, registered files are {self.registered_fds}')
                     continue
-                
+
                 sfp_index, fd, fd_type = self.registered_fds[fileno]
                 s = self._sfp_list[sfp_index]
                 fd.seek(0)
@@ -510,7 +510,7 @@ class Chassis(ChassisBase):
                         # FW control cable got an error, no need trigger state machine
                         sfp_status, error_desc = s.get_error_info_from_sdk_error_type()
                         port_dict[sfp_index + 1] = sfp_status
-                        if error_desc: 
+                        if error_desc:
                             error_dict[sfp_index + 1] = error_desc
                         continue
                     elif str(fd_value) == sfp.SFP_STATUS_INSERTED:
@@ -526,14 +526,14 @@ class Chassis(ChassisBase):
                     # event could be EVENT_POWER_GOOD or EVENT_POWER_BAD
                     event = sfp.EVENT_POWER_BAD if fd_value == 0 else sfp.EVENT_POWER_GOOD
                     s.on_event(event)
-                    
+
                 if s.in_stable_state():
                     self.sfp_module.SFP.wait_sfp_eeprom_ready([s], 2)
                     s.fill_change_event(port_dict)
                     s.refresh_poll_obj(self.poll_obj, self.registered_fds)
                 else:
                     logger.log_debug(f'SFP {sfp_index} does not reach stable state, state={s.state}')
-                    
+
             ready_sfp_set = wait_ready_task.get_ready_set()
             for sfp_index in ready_sfp_set:
                 s = self._sfp_list[sfp_index]
@@ -544,7 +544,7 @@ class Chassis(ChassisBase):
                     s.refresh_poll_obj(self.poll_obj, self.registered_fds)
                 else:
                     logger.log_error(f'SFP {sfp_index} failed to reach stable state, state={s.state}')
-                    
+
             if port_dict:
                 logger.log_notice(f'Sending SFP change event: {port_dict}, error event: {error_dict}')
                 self.reinit_sfps(port_dict)
@@ -591,23 +591,23 @@ class Chassis(ChassisBase):
                 self.sfp_states_before_first_poll[s.sdk_index] = s.get_module_status()
 
             logger.log_debug(f'Registered SFP file descriptors for polling: {self.registered_fds}')
-            
+
         from . import sfp
-        
+
         wait_forever = (timeout == 0)
         # poll timeout should be no more than 1000ms to ensure fast shutdown flow
         timeout = 1000.0 if timeout >= 1000 else float(timeout)
         port_dict = {}
         error_dict = {}
         begin = time.monotonic()
-        
+
         while True:
             fds_events = self.poll_obj.poll(timeout)
             for fileno, _ in fds_events:
                 if fileno not in self.registered_fds:
                     logger.log_error(f'Unknown file no {fileno} from poll event, registered files are {self.registered_fds}')
                     continue
-                
+
                 sfp_index, fd = self.registered_fds[fileno]
                 fd.seek(0)
                 fd.read()
@@ -975,7 +975,7 @@ class Chassis(ChassisBase):
                 return result
 
             result = utils.read_key_value_file(filename, delimeter=": ")
-                
+
         except Exception as e:
             logger.log_error("Fail to decode vpd_data {} due to {}".format(filename, repr(e)))
 

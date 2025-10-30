@@ -284,7 +284,7 @@ class TestUtils:
         mock_os_open = mock.mock_open(read_data='a=b')
         with mock.patch('sonic_platform.utils.open', mock_os_open):
             assert utils.read_key_value_file('some_file', delimeter='=') == {'a':'b'}
-            
+
     @mock.patch('sonic_platform.utils.time.sleep', mock.MagicMock())
     def test_wait_until_conditions(self):
         conditions = [lambda: True]
