@@ -143,6 +143,8 @@ class Chassis(ChassisBase):
 
         self._num_npus = device_info.get_num_npus()
 
+        self._num_npus = device_info.get_num_npus()
+
         self.liquid_cooling = None
 
         Chassis.chassis_instance = self
